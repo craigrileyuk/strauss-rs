@@ -1,0 +1,12 @@
+{
+    "name": "acme/my-plugin",
+    "autoload": {
+        "psr-4": {
+            "Acme\\Plugin\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.0",
+        "league/flysystem": "^3.0"
+    }
+}
