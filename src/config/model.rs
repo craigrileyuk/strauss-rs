@@ -2,19 +2,29 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::str::FromStr;
+
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 
 use crate::config::composer::Autoload;
 use crate::php_pattern::{PhpPattern, Replacement};
 
 /// The resolved configuration: every option set, either by the user or by
 /// the same defaults and inference as PHP Strauss.
-#[derive(Debug)]
+///
+/// Serializing it gives the options as `strauss.json` would write them, with
+/// every default and inferred value filled in, so the output can be saved as a
+/// `strauss.json` that produces the same configuration.
+#[derive(Debug, Serialize)]
 pub struct Config {
     /// The directory containing `strauss.json` and `composer.json`.
+    #[serde(skip)]
     pub project_dir: PathBuf,
 
     /// Composer's vendor directory, relative to the project. Read from
     /// `config.vendor-dir` in `composer.json`. Default `vendor`.
+    #[serde(skip)]
     pub vendor_directory: String,
 
     /// `target_directory`: where the prefixed files are written, relative to
@@ -24,18 +34,22 @@ pub struct Config {
 
     /// `namespace_prefix`: prepended to every namespace, without leading or
     /// trailing backslashes (`Acme\Plugin`). Inferred from `composer.json`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub namespace_prefix: Option<String>,
 
     /// `classmap_prefix`: prepended to classes in the global namespace
     /// (`Acme_Plugin_`). Inferred from `composer.json`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub classmap_prefix: Option<String>,
 
     /// `constant_prefix`: prepended to constants declared with `define()`.
     /// `None` leaves constants alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub constant_prefix: Option<String>,
 
     /// `functions_prefix`: prepended to global functions. Defaults to the
     /// lower-cased `classmap_prefix`; `false` or `""` disables it.
+    #[serde(serialize_with = "serialize_functions_prefix")]
     pub functions_prefix: Option<String>,
 
     /// `packages`: the packages to process. Defaults to the `require` keys of
@@ -82,6 +96,7 @@ pub struct Config {
 
     /// `namespace_replacement_patterns`, in priority order: the first pattern
     /// that changes a namespace wins.
+    #[serde(serialize_with = "serialize_replacement_patterns")]
     pub namespace_replacement_patterns: Vec<NamespaceReplacement>,
 
     /// `delete_vendor_packages`: delete the packages' vendor directories after
@@ -123,6 +138,50 @@ pub enum UpdateCallSites {
     Paths(Vec<String>),
 }
 
+impl Serialize for UpdateCallSites {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            UpdateCallSites::Disabled => serializer.serialize_bool(false),
+            UpdateCallSites::FromAutoload => serializer.serialize_bool(true),
+            UpdateCallSites::Paths(paths) => paths.serialize(serializer),
+        }
+    }
+}
+
+/// The command line form: `true`, `false`, or a comma-separated list of files
+/// and directories, as in `--updateCallSites=includes,templates`.
+impl FromStr for UpdateCallSites {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let value = value.trim();
+
+        if value.eq_ignore_ascii_case("true") {
+            return Ok(UpdateCallSites::FromAutoload);
+        }
+
+        if value.eq_ignore_ascii_case("false") {
+            return Ok(UpdateCallSites::Disabled);
+        }
+
+        let paths: Vec<String> = value
+            .split(',')
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .map(String::from)
+            .collect();
+
+        if paths.is_empty() {
+            return Err(
+                "expected `true`, `false`, or a comma-separated list of files and directories"
+                    .to_string(),
+            );
+        }
+
+        Ok(UpdateCallSites::Paths(paths))
+    }
+}
+
 /// `parallel`: how many worker processes analyse files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Parallel {
@@ -134,9 +193,54 @@ pub enum Parallel {
     Workers(usize),
 }
 
+impl Parallel {
+    /// `0` is as many workers as there are spare CPUs, `1` is a single
+    /// process, and anything larger caps the number of workers.
+    pub fn from_workers(workers: usize) -> Self {
+        match workers {
+            0 => Parallel::Auto,
+            1 => Parallel::Disabled,
+            workers => Parallel::Workers(workers),
+        }
+    }
+}
+
+impl Serialize for Parallel {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Parallel::Auto => serializer.serialize_bool(true),
+            Parallel::Disabled => serializer.serialize_bool(false),
+            Parallel::Workers(workers) => serializer.serialize_u64(*workers as u64),
+        }
+    }
+}
+
+/// The command line form: `true`, `false`, or a number of workers, as in
+/// `--parallel=4`.
+impl FromStr for Parallel {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let value = value.trim();
+
+        if value.eq_ignore_ascii_case("true") {
+            return Ok(Parallel::Auto);
+        }
+
+        if value.eq_ignore_ascii_case("false") {
+            return Ok(Parallel::Disabled);
+        }
+
+        value
+            .parse::<usize>()
+            .map(Parallel::from_workers)
+            .map_err(|_| "expected `true`, `false`, or a whole number".to_string())
+    }
+}
+
 /// The `packages`, `namespaces` and `file_patterns` lists shared by the
 /// `exclude_*` options.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct Exclusions {
     /// Package names, e.g. `league/flysystem`.
     pub packages: Vec<String>,
@@ -147,14 +251,15 @@ pub struct Exclusions {
     pub file_patterns: Vec<PhpPattern>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ConstantExclusions {
+    #[serde(flatten)]
     pub exclusions: Exclusions,
     /// Constant names that are never prefixed, e.g. `WP_PLUGIN_DIR`.
     pub constants: Vec<String>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct StringRenameExclusions {
     /// Global function names whose name is left unchanged inside strings,
     /// such as `$array['value']`.
@@ -165,4 +270,30 @@ pub struct StringRenameExclusions {
 pub struct NamespaceReplacement {
     pub pattern: PhpPattern,
     pub replacement: Replacement,
+}
+
+/// `false` is how `strauss.json` says "no function prefix"; leaving the option
+/// out would mean "use the default".
+fn serialize_functions_prefix<S: Serializer>(
+    prefix: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match prefix {
+        Some(prefix) => serializer.serialize_str(prefix),
+        None => serializer.serialize_bool(false),
+    }
+}
+
+/// An object, in priority order.
+fn serialize_replacement_patterns<S: Serializer>(
+    patterns: &[NamespaceReplacement],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let mut map = serializer.serialize_map(Some(patterns.len()))?;
+
+    for entry in patterns {
+        map.serialize_entry(entry.pattern.source(), &entry.replacement)?;
+    }
+
+    map.end()
 }

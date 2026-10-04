@@ -10,6 +10,7 @@ mod loading;
 mod options;
 mod prefixes;
 mod schema;
+mod serialization;
 
 pub(super) fn config(strauss: &str, composer: &str) -> Config {
     Config::from_json(Path::new("/project"), Some(strauss), Some(composer))

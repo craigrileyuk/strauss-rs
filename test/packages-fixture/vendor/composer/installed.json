@@ -1,0 +1,62 @@
+{
+    "packages": [
+        {
+            "name": "acme/lib",
+            "version": "1.2.0",
+            "type": "library",
+            "install-path": "../acme/lib",
+            "autoload": {"psr-4": {"Acme\\Lib\\": "src/"}},
+            "require": {"php": ">=8.0", "ext-json": "*", "acme/dep": "^1.0", "psr/log-implementation": "*"},
+            "suggest": {"acme/unused": "optional extras"},
+            "license": ["MIT"]
+        },
+        {
+            "name": "Acme/Dep",
+            "version": "1.0.0",
+            "type": "library",
+            "install-path": "../acme/dep",
+            "autoload": {"psr-0": {"Acme_Dep_": "lib/"}},
+            "require": {"acme/lib": "*", "acme/fallback": "*", "lib-curl": "*"},
+            "license": "BSD-3-Clause"
+        },
+        {
+            "name": "acme/logger",
+            "version": "1.0.0",
+            "type": "library",
+            "install-path": "../acme/logger",
+            "autoload": {"psr-4": {"Acme\\Logger\\": "src/"}, "files": ["functions.php"]},
+            "provide": {"psr/log-implementation": "1.0"},
+            "replace": {"acme/old-logger": "*"}
+        },
+        {
+            "name": "acme/meta",
+            "version": "1.0.0",
+            "type": "metapackage",
+            "install-path": null,
+            "require": {"acme/dep": "*"}
+        },
+        {
+            "name": "acme/plugin-pkg",
+            "version": "2.0.0",
+            "type": "wordpress-plugin",
+            "install-path": "../../web/plugins/plugin-pkg",
+            "autoload": {"classmap": ["inc/"]}
+        },
+        {
+            "name": "acme/unused",
+            "version": "1.0.0",
+            "type": "library",
+            "install-path": "../acme/unused",
+            "autoload": {"psr-4": {"Acme\\Unused\\": ""}}
+        },
+        {
+            "name": "acme/missing-dir",
+            "version": "1.0.0",
+            "type": "library",
+            "install-path": "../acme/missing-dir",
+            "autoload": {"psr-4": {"Acme\\Missing\\": "src/"}}
+        }
+    ],
+    "dev": false,
+    "dev-package-names": []
+}

@@ -4,21 +4,27 @@
 use std::fmt;
 use std::marker::PhantomData;
 
-use serde::Deserialize;
-use serde::de::{Deserializer, MapAccess, Visitor};
+use serde::de::{Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 /// An `autoload` object, as in `composer.json`.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Autoload {
-    #[serde(rename = "psr-4", default)]
+    #[serde(rename = "psr-4", default, skip_serializing_if = "Ordered::is_empty")]
     pub psr4: Ordered<StringOrList>,
-    #[serde(rename = "psr-0", default)]
+    #[serde(rename = "psr-0", default, skip_serializing_if = "Ordered::is_empty")]
     pub psr0: Ordered<StringOrList>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub classmap: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<String>,
+    #[serde(
+        rename = "exclude-from-classmap",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub exclude_from_classmap: Vec<String>,
 }
 
 impl Autoload {
@@ -39,7 +45,7 @@ impl Autoload {
 
 /// A JSON string or an array of strings, as Composer allows for autoload
 /// paths.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum StringOrList {
     One(String),
@@ -60,8 +66,20 @@ impl StringOrList {
 /// A JSON object whose key order is kept. Order matters for
 /// `namespace_replacement_patterns` (priority) and for Composer's `psr-4`
 /// (Strauss infers the prefix from the first key).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ordered<V>(pub Vec<(String, V)>);
+
+impl<V> Ordered<V> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl<V: Serialize> Serialize for Ordered<V> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_map(self.0.iter().map(|(key, value)| (key, value)))
+    }
+}
 
 impl<V> Default for Ordered<V> {
     fn default() -> Self {
@@ -89,9 +107,21 @@ impl<'de, V: Deserialize<'de>> Deserialize<'de> for Ordered<V> {
 
                 Ok(Ordered(entries))
             }
+
+            /// PHP writes an empty map as `[]`. Composer's own files do this.
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                if seq.next_element::<serde::de::IgnoredAny>()?.is_some() {
+                    return Err(serde::de::Error::invalid_type(
+                        serde::de::Unexpected::Seq,
+                        &"an object",
+                    ));
+                }
+
+                Ok(Ordered(Vec::new()))
+            }
         }
 
-        deserializer.deserialize_map(OrderedVisitor(PhantomData))
+        deserializer.deserialize_any(OrderedVisitor(PhantomData))
     }
 }
 

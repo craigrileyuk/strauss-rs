@@ -219,9 +219,7 @@ pub(super) fn resolve_parallel(value: Option<Value>) -> Result<Parallel, ConfigE
         None | Some(Value::Null) | Some(Value::Bool(true)) => Ok(Parallel::Auto),
         Some(Value::Bool(false)) => Ok(Parallel::Disabled),
         Some(Value::Number(number)) => match number.as_u64() {
-            Some(0) => Ok(Parallel::Auto),
-            Some(1) => Ok(Parallel::Disabled),
-            Some(workers) => Ok(Parallel::Workers(workers as usize)),
+            Some(workers) => Ok(Parallel::from_workers(workers as usize)),
             None => Err(invalid(
                 "parallel",
                 "must be true, false, or a whole number",
