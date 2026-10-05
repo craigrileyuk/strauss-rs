@@ -10,6 +10,8 @@ use php_rs_parser::parse;
 use crate::analyser;
 use crate::config::{Config, Parallel, UpdateCallSites};
 use crate::packages::{self, PackageSet};
+use crate::rename::{self, PlannedSymbol};
+use crate::symbols::{self, SymbolTable};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -42,7 +44,23 @@ enum Command {
     ///
     /// Every file in a package is listed, except those git would leave out of
     /// an archive: `.git`, `.gitignore`d files and `export-ignore` files.
-    Files(ProjectArgs),
+    Files(ScanArgs),
+
+    /// List the symbols each package declares as JSON: namespaces, classes,
+    /// interfaces, traits, enums, functions and constants.
+    ///
+    /// Analyses every `.php` file of every package, so it can take a moment.
+    /// PHP's own symbols, which polyfills redeclare, are listed separately.
+    /// Files that can't be analysed are reported on stderr.
+    Symbols(ScanArgs),
+
+    /// Show which symbols would be renamed, to what, and why not the others, as
+    /// JSON.
+    ///
+    /// Analyses every package like `symbols` does. Without `--package` this is
+    /// every symbol, which for a large project is a lot; `summary` has the
+    /// counts.
+    Plan(PlanArgs),
 
     /// Analyse a PHP file and print the symbols it declares and refers to.
     Analyse {
@@ -57,6 +75,44 @@ struct ProjectArgs {
     /// The plugin or theme root, containing `strauss.json` and `composer.json`.
     #[arg(short = 'C', long, value_name = "DIR", default_value = ".")]
     project_dir: PathBuf,
+}
+
+/// How many workers analyse files. The commands that analyse files take it.
+#[derive(Debug, Args)]
+struct ParallelArgs {
+    /// How many workers analyse files, overriding `parallel`: `auto` (or
+    /// `true`) for one per available CPU, `false` or `1` for a single worker,
+    /// or a number to cap the workers.
+    #[arg(
+        long,
+        value_name = "auto|false|N",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true"
+    )]
+    parallel: Option<Parallel>,
+}
+
+/// A project, and how to analyse its files.
+#[derive(Debug, Args)]
+struct ScanArgs {
+    #[command(flatten)]
+    project: ProjectArgs,
+
+    #[command(flatten)]
+    parallel: ParallelArgs,
+}
+
+/// A project, how to analyse its files, and which symbols to show.
+#[derive(Debug, Args)]
+struct PlanArgs {
+    #[command(flatten)]
+    scan: ScanArgs,
+
+    /// Only show the symbols this package declares. Can be given more than
+    /// once.
+    #[arg(long = "package", value_name = "NAME")]
+    packages: Vec<String>,
 }
 
 /// A project, and options that override its configuration.
@@ -86,17 +142,8 @@ struct Overrides {
     )]
     update_call_sites: Option<UpdateCallSites>,
 
-    /// How many workers analyse files, overriding `parallel`: `true` for one
-    /// per spare CPU, `false` or `1` for a single process, or a number to cap
-    /// the workers.
-    #[arg(
-        long,
-        value_name = "true|false|N",
-        num_args = 0..=1,
-        require_equals = true,
-        default_missing_value = "true"
-    )]
-    parallel: Option<Parallel>,
+    #[command(flatten)]
+    parallel: ParallelArgs,
 }
 
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -133,6 +180,18 @@ fn execute(command: Command) -> Result {
             Ok(())
         }
 
+        Command::Symbols(args) => {
+            println!("{}", render_symbols(&args)?);
+
+            Ok(())
+        }
+
+        Command::Plan(args) => {
+            println!("{}", render_plan(&args)?);
+
+            Ok(())
+        }
+
         Command::Analyse { file } => analyse_file(&file),
     }
 }
@@ -145,7 +204,7 @@ fn render_config(args: &ConfigArgs) -> Result<String> {
         config.update_call_sites = update_call_sites.clone();
     }
 
-    if let Some(parallel) = args.overrides.parallel {
+    if let Some(parallel) = args.overrides.parallel.parallel {
         config.parallel = parallel;
     }
 
@@ -161,8 +220,13 @@ fn render_packages(args: &ProjectArgs) -> Result<String> {
     Ok(serde_json::to_string_pretty(&set)?)
 }
 
-fn render_files(args: &ProjectArgs) -> Result<String> {
-    let config = load_config(args)?;
+fn render_files(args: &ScanArgs) -> Result<String> {
+    let mut config = load_config(&args.project)?;
+
+    if let Some(parallel) = args.parallel.parallel {
+        config.parallel = parallel;
+    }
+
     let set = packages::enumerate_packages(&config)?;
     let files = packages::enumerate_files(&config, &set)?;
 
@@ -171,6 +235,77 @@ fn render_files(args: &ProjectArgs) -> Result<String> {
     Ok(serde_json::to_string_pretty(
         &serde_json::json!({ "files": files }),
     )?)
+}
+
+fn render_symbols(args: &ScanArgs) -> Result<String> {
+    let mut config = load_config(&args.project)?;
+
+    if let Some(parallel) = args.parallel.parallel {
+        config.parallel = parallel;
+    }
+
+    let set = packages::enumerate_packages(&config)?;
+    let files = packages::enumerate_files(&config, &set)?;
+    let table = symbols::scan(&config, &files);
+
+    report_problems(&set);
+    report_scan_warnings(&table);
+
+    Ok(serde_json::to_string_pretty(&table.report())?)
+}
+
+/// What `strauss-rs plan` prints.
+#[derive(serde::Serialize)]
+struct PlanReport<'a> {
+    packages_to_prefix: &'a [String],
+    summary: rename::PlanSummary,
+    files_excluded_from_prefix: &'a [rename::ExcludedFile],
+    symbols: Vec<&'a PlannedSymbol>,
+}
+
+fn render_plan(args: &PlanArgs) -> Result<String> {
+    let mut config = load_config(&args.scan.project)?;
+
+    if let Some(parallel) = args.scan.parallel.parallel {
+        config.parallel = parallel;
+    }
+
+    let set = packages::enumerate_packages(&config)?;
+    let mut files = packages::enumerate_files(&config, &set)?;
+    let table = symbols::scan(&config, &files);
+
+    rename::exclude_namespaces_from_copy(&config, &mut files, &table);
+
+    let plan = rename::plan(&config, &set, &files, &table);
+
+    report_problems(&set);
+    report_scan_warnings(&table);
+
+    let selected: Vec<&PlannedSymbol> = plan
+        .symbols
+        .iter()
+        .filter(|symbol| {
+            args.packages.is_empty()
+                || symbol.packages.iter().any(|package| {
+                    args.packages
+                        .iter()
+                        .any(|wanted| wanted.eq_ignore_ascii_case(package))
+                })
+        })
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&PlanReport {
+        packages_to_prefix: &plan.packages_to_prefix,
+        summary: plan.summary(),
+        files_excluded_from_prefix: &plan.files_excluded_from_prefix,
+        symbols: selected,
+    })?)
+}
+
+fn report_scan_warnings(table: &SymbolTable) {
+    for warning in &table.warnings {
+        eprintln!("warning: {}: {}", warning.file, warning.message);
+    }
 }
 
 /// Packages that were required but left out, or found with a problem, go to

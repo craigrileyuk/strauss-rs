@@ -214,21 +214,18 @@ pub(super) fn resolve_update_call_sites(
     }
 }
 
+const PARALLEL_EXPECTED: &str = "must be \"auto\", true, false, or a whole number";
+
 pub(super) fn resolve_parallel(value: Option<Value>) -> Result<Parallel, ConfigError> {
     match value {
         None | Some(Value::Null) | Some(Value::Bool(true)) => Ok(Parallel::Auto),
         Some(Value::Bool(false)) => Ok(Parallel::Disabled),
+        Some(Value::String(value)) if value.eq_ignore_ascii_case("auto") => Ok(Parallel::Auto),
         Some(Value::Number(number)) => match number.as_u64() {
             Some(workers) => Ok(Parallel::from_workers(workers as usize)),
-            None => Err(invalid(
-                "parallel",
-                "must be true, false, or a whole number",
-            )),
+            None => Err(invalid("parallel", PARALLEL_EXPECTED)),
         },
-        Some(_) => Err(invalid(
-            "parallel",
-            "must be true, false, or a whole number",
-        )),
+        Some(_) => Err(invalid("parallel", PARALLEL_EXPECTED)),
     }
 }
 

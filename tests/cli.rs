@@ -38,7 +38,7 @@ fn prints_the_resolved_configuration_as_json() {
     assert_eq!(config["target_directory"], "lib/prefixed");
     assert_eq!(config["namespace_prefix"], "Acme\\Plugin\\Vendor");
     assert_eq!(config["classmap_prefix"], "Acme_Plugin_");
-    assert_eq!(config["parallel"], true);
+    assert_eq!(config["parallel"], "auto");
     assert_eq!(config["update_call_sites"], false);
 }
 
@@ -138,7 +138,7 @@ fn reports_an_invalid_option_value_as_a_usage_error() {
     let output = strauss(&["config", "--parallel=lots"]);
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(stderr(&output).contains("expected `true`, `false`, or a whole number"));
+    assert!(stderr(&output).contains("expected `auto`, `true`, `false`, or a whole number"));
 }
 
 #[test]
@@ -178,4 +178,33 @@ fn reports_its_version() {
         stdout(&output).trim(),
         format!("strauss-rs {}", env!("CARGO_PKG_VERSION"))
     );
+}
+
+#[test]
+fn parallel_is_auto_unless_set() {
+    let default = strauss(&["config", "-C", &path("test/config-fixture")]);
+    let explicit = strauss(&[
+        "config",
+        "-C",
+        &path("test/config-fixture"),
+        "--parallel=auto",
+    ]);
+    let off = strauss(&[
+        "config",
+        "-C",
+        &path("test/config-fixture"),
+        "--parallel=false",
+    ]);
+
+    let parallel = |output: &Output| -> Value {
+        assert!(output.status.success(), "{}", stderr(output));
+
+        serde_json::from_str::<Value>(&stdout(output)).unwrap()["parallel"].clone()
+    };
+
+    assert_eq!(parallel(&default), "auto");
+    assert_eq!(parallel(&explicit), "auto");
+    assert_eq!(parallel(&off), false);
+    // Spelling it out changes nothing.
+    assert_eq!(default.stdout, explicit.stdout);
 }

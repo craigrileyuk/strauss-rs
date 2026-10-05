@@ -114,6 +114,9 @@ pub enum CopyExclusion {
     PackageExcluded,
     /// The file matches this `exclude_from_copy.file_patterns` entry.
     PatternMatched(String),
+    /// The file declares a namespace in this `exclude_from_copy.namespaces`
+    /// entry. Only known once the file's symbols have been found.
+    NamespaceExcluded(String),
 }
 
 impl fmt::Display for CopyExclusion {
@@ -131,6 +134,10 @@ impl fmt::Display for CopyExclusion {
                     "it matches exclude_from_copy.file_patterns `{pattern}`"
                 )
             }
+            CopyExclusion::NamespaceExcluded(namespace) => write!(
+                formatter,
+                "it declares a namespace in exclude_from_copy.namespaces `{namespace}`"
+            ),
         }
     }
 }

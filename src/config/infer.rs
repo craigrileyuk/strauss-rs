@@ -28,24 +28,38 @@ pub(super) fn infer_namespace_prefix(
 /// The prefix PHP Strauss uses when `classmap_prefix` isn't set: the
 /// project's first `psr-4` or `psr-0` namespace with underscores for
 /// backslashes (`Acme\Plugin\` -> `Acme_Plugin_`), else its package name
-/// (`acme/my-plugin` -> `Acme_My_Plugin`), else the namespace prefix.
+/// (`acme/my-plugin` -> `Acme_My_Plugin_`), else the namespace prefix.
+///
+/// It always ends in an underscore, because it goes straight in front of a
+/// class name: `Acme_My_Plugin_Client`, not `Acme_My_PluginClient`. PHP Strauss
+/// leaves the underscore off a prefix inferred from the package name.
 pub(super) fn infer_classmap_prefix(
     composer: &ComposerJson,
     namespace_prefix: Option<&str>,
 ) -> Option<String> {
     if let Some(key) = first_autoload_namespace(composer) {
-        return Some(key.replace('\\', "_"));
+        return Some(ending_in_underscore(
+            key.trim_matches('\\').replace('\\', "_"),
+        ));
     }
 
     if let Some(name) = package_name(composer) {
-        return Some(capitalise_words(
+        return Some(ending_in_underscore(capitalise_words(
             &words_with_separators(name).replace('/', "_"),
-        ));
+        )));
     }
 
     namespace_prefix
         .map(|prefix| format!("{}_", words_with_separators(prefix).trim_end_matches('_')))
         .filter(|prefix| prefix != "_")
+}
+
+fn ending_in_underscore(mut prefix: String) -> String {
+    if !prefix.ends_with('_') {
+        prefix.push('_');
+    }
+
+    prefix
 }
 
 fn first_autoload_namespace(composer: &ComposerJson) -> Option<&str> {

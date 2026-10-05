@@ -60,7 +60,7 @@ fn no_overrides_by_default() {
     let args = config_args(&[]);
 
     assert_eq!(args.overrides.update_call_sites, None);
-    assert_eq!(args.overrides.parallel, None);
+    assert_eq!(args.overrides.parallel.parallel, None);
 }
 
 #[test]
@@ -107,23 +107,29 @@ fn update_call_sites_also_accepts_the_kebab_case_spelling() {
 #[test]
 fn reads_parallel() {
     assert_eq!(
-        config_args(&["--parallel"]).overrides.parallel,
+        config_args(&["--parallel"]).overrides.parallel.parallel,
         Some(Parallel::Auto)
     );
     assert_eq!(
-        config_args(&["--parallel=true"]).overrides.parallel,
+        config_args(&["--parallel=true"])
+            .overrides
+            .parallel
+            .parallel,
         Some(Parallel::Auto)
     );
     assert_eq!(
-        config_args(&["--parallel=false"]).overrides.parallel,
+        config_args(&["--parallel=false"])
+            .overrides
+            .parallel
+            .parallel,
         Some(Parallel::Disabled)
     );
     assert_eq!(
-        config_args(&["--parallel=1"]).overrides.parallel,
+        config_args(&["--parallel=1"]).overrides.parallel.parallel,
         Some(Parallel::Disabled)
     );
     assert_eq!(
-        config_args(&["--parallel=4"]).overrides.parallel,
+        config_args(&["--parallel=4"]).overrides.parallel.parallel,
         Some(Parallel::Workers(4))
     );
 }
@@ -184,7 +190,7 @@ fn renders_the_resolved_configuration() {
         serde_json::json!(["league/flysystem", "psr/log"])
     );
     assert_eq!(config["update_call_sites"], false);
-    assert_eq!(config["parallel"], true);
+    assert_eq!(config["parallel"], "auto");
 }
 
 #[test]
@@ -230,4 +236,102 @@ fn reports_configuration_errors() {
         error.starts_with("strauss.json: unknown field `target_dir`"),
         "{error}"
     );
+}
+
+fn symbols_args(args: &[&str]) -> ScanArgs {
+    let mut full = vec!["symbols"];
+    full.extend_from_slice(args);
+
+    match parse_args(&full).unwrap().command {
+        Command::Symbols(args) => args,
+        other => panic!("expected the symbols command, got {other:?}"),
+    }
+}
+
+#[test]
+fn symbols_takes_a_project_and_the_number_of_workers() {
+    let args = symbols_args(&["-C", "plugin", "--parallel=3"]);
+
+    assert_eq!(args.project.project_dir, PathBuf::from("plugin"));
+    assert_eq!(args.parallel.parallel, Some(Parallel::Workers(3)));
+    assert_eq!(symbols_args(&[]).parallel.parallel, None);
+    assert_eq!(
+        symbols_args(&["--parallel"]).parallel.parallel,
+        Some(Parallel::Auto)
+    );
+    assert_eq!(
+        symbols_args(&["--parallel=false"]).parallel.parallel,
+        Some(Parallel::Disabled)
+    );
+}
+
+#[test]
+fn symbols_does_not_take_options_that_only_affect_the_configuration() {
+    let error = parse_args(&["symbols", "--updateCallSites"]).unwrap_err();
+
+    assert_eq!(error.kind(), ErrorKind::UnknownArgument);
+}
+
+#[test]
+fn parallel_accepts_auto_on_the_command_line() {
+    assert_eq!(
+        config_args(&["--parallel=auto"])
+            .overrides
+            .parallel
+            .parallel,
+        Some(Parallel::Auto)
+    );
+    assert_eq!(
+        symbols_args(&["--parallel=auto"]).parallel.parallel,
+        Some(Parallel::Auto)
+    );
+    assert_eq!(
+        symbols_args(&["--parallel=AUTO"]).parallel.parallel,
+        Some(Parallel::Auto)
+    );
+}
+
+#[test]
+fn a_command_line_worker_count_overrides_the_files_auto() {
+    let config = rendered(&["--parallel=3"]);
+
+    assert_eq!(config["parallel"], 3);
+}
+
+fn plan_args(args: &[&str]) -> PlanArgs {
+    let mut full = vec!["plan"];
+    full.extend_from_slice(args);
+
+    match parse_args(&full).unwrap().command {
+        Command::Plan(args) => args,
+        other => panic!("expected the plan command, got {other:?}"),
+    }
+}
+
+#[test]
+fn plan_takes_a_project_workers_and_packages_to_show() {
+    let args = plan_args(&[
+        "-C",
+        "plugin",
+        "--parallel=2",
+        "--package",
+        "acme/a",
+        "--package=acme/b",
+    ]);
+
+    assert_eq!(args.scan.project.project_dir, PathBuf::from("plugin"));
+    assert_eq!(args.scan.parallel.parallel, Some(Parallel::Workers(2)));
+    assert_eq!(args.packages, ["acme/a", "acme/b"]);
+}
+
+#[test]
+fn plan_shows_every_package_by_default() {
+    assert!(plan_args(&[]).packages.is_empty());
+}
+
+#[test]
+fn plan_does_not_take_options_that_only_affect_the_configuration() {
+    let error = parse_args(&["plan", "--updateCallSites"]).unwrap_err();
+
+    assert_eq!(error.kind(), ErrorKind::UnknownArgument);
 }

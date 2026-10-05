@@ -397,3 +397,31 @@ fn files_not_copied_say_why() {
     assert_eq!(source["copy"], true);
     assert!(source.get("not_copied_because").is_none());
 }
+
+#[test]
+fn the_file_listing_does_not_depend_on_the_number_of_workers() {
+    let project = Project::new("workers");
+
+    for index in 0..30 {
+        project.package_file(&format!("src/File{index}.php"), "<?php");
+    }
+
+    let listing = |argument: &str| {
+        let output = project.run(&["files", argument]);
+
+        assert!(
+            output.status.success(),
+            "{argument}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stdout.len() > 1000);
+
+        output.stdout
+    };
+
+    let sequential = listing("--parallel=false");
+
+    for argument in ["--parallel=2", "--parallel=8", "--parallel"] {
+        assert_eq!(listing(argument), sequential, "{argument}");
+    }
+}

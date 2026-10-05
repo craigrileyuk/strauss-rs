@@ -136,11 +136,14 @@ fn analyse_statements(
                 }
             }
 
-            // Declarations may be nested (inside `if` blocks, function
-            // bodies, etc.), so they're collected recursively.
-            _ => collect_declarations(std::slice::from_ref(stmt), namespace, &mut symbols),
+            _ => {}
         }
     }
+
+    // Declarations may be nested (inside `if` blocks, function bodies, etc.),
+    // so they're collected recursively. This waits for every import, so a
+    // declaration's parents resolve through all of them.
+    collect_declarations(stmts, namespace, &resolver, &mut symbols);
 
     let context = AnalysisContext {
         resolver: &resolver,

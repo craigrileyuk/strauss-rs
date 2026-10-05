@@ -86,11 +86,38 @@ pub enum ImportKind {
 
 #[derive(Debug)]
 pub struct DeclaredSymbol {
+    /// The full name, without a leading backslash.
     pub name: String,
     pub kind: SymbolKind,
+
+    /// `abstract class`.
+    pub is_abstract: bool,
+
+    /// What a class extends (at most one name) or an interface extends (any
+    /// number), as full names.
+    pub extends: Vec<String>,
+
+    /// What a class or enum implements, as full names.
+    pub implements: Vec<String>,
+
+    /// The type of a backed enum: `string` or `int`.
+    pub backing_type: Option<String>,
 }
 
-#[derive(Debug)]
+impl DeclaredSymbol {
+    pub fn new(name: String, kind: SymbolKind) -> Self {
+        Self {
+            name,
+            kind,
+            is_abstract: false,
+            extends: Vec::new(),
+            implements: Vec::new(),
+            backing_type: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
     Class,
     Interface,

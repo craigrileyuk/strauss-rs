@@ -1,0 +1,7 @@
+{
+    "packages": [
+        {"name": "acme/poly", "version": "1.0.0", "install-path": "../acme/poly"},
+        {"name": "acme/app-lib", "version": "1.0.0", "install-path": "../acme/app-lib"},
+        {"name": "acme/dup", "version": "1.0.0", "install-path": "../acme/dup"}
+    ]
+}

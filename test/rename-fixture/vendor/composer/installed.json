@@ -1,0 +1,17 @@
+{
+    "packages": [
+        {"name": "acme/psr4-lib", "version": "1.0.0", "install-path": "../acme/psr4-lib",
+         "autoload": {"psr-4": {"Acme\\Psr4\\": "src/"}}},
+        {"name": "acme/psr0-lib", "version": "1.0.0", "install-path": "../acme/psr0-lib",
+         "autoload": {"psr-0": {"Acme_Zero_": "lib/", "Zero\\": "lib/"}}},
+        {"name": "acme/classmap-lib", "version": "1.0.0", "install-path": "../acme/classmap-lib",
+         "autoload": {"classmap": ["classes/"], "exclude-from-classmap": ["classes/vendor-skip/"]}},
+        {"name": "acme/files-lib", "version": "1.0.0", "install-path": "../acme/files-lib",
+         "autoload": {"files": ["bootstrap.php"]}},
+        {"name": "acme/keep", "version": "1.0.0", "install-path": "../acme/keep",
+         "autoload": {"psr-4": {"Acme\\Keep\\": "src/"}}},
+        {"name": "acme/not-copied", "version": "1.0.0", "install-path": "../acme/not-copied",
+         "autoload": {"psr-4": {"Acme\\NotCopied\\": "src/"}}},
+        {"name": "acme/pattern", "version": "1.0.0", "install-path": "../acme/pattern"}
+    ]
+}

@@ -1,0 +1,8 @@
+{
+    "name": "acme/symbols-app",
+    "require": {
+        "acme/poly": "*",
+        "acme/app-lib": "*",
+        "acme/dup": "*"
+    }
+}

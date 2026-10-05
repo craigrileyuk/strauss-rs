@@ -8,36 +8,55 @@
 use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
+use rayon::prelude::*;
 
 use crate::config::Config;
 use crate::packages::error::PackagesError;
 use crate::packages::gitattributes::GitAttributes;
 use crate::packages::model::{CopyExclusion, Package, PackageFile, PackageSet};
+use crate::parallel;
 
 /// Lists the files of every package, ordered by path.
+///
+/// Packages are listed in parallel; one with a very large number of files is
+/// still listed by a single worker.
 pub fn enumerate_files(
     config: &Config,
     set: &PackageSet,
 ) -> Result<Vec<PackageFile>, PackagesError> {
+    let workers = parallel::worker_count(config.parallel, set.packages.len());
+
+    let listings: Vec<Result<Vec<PackageFile>, PackagesError>> =
+        parallel::pool(workers).install(|| {
+            set.packages
+                .par_iter()
+                .map(|package| package_files(config, package))
+                .collect()
+        });
+
     let mut files = Vec::new();
 
-    for package in &set.packages {
-        let Some(path) = &package.path else {
-            continue;
-        };
-
-        let relative_paths = list_package(package, path, config.exclude_git_files)?;
-
-        files.extend(
-            relative_paths
-                .into_iter()
-                .map(|relative| package_file(config, package, path, relative)),
-        );
+    // In package order, so which error is reported doesn't depend on timing.
+    for listing in listings {
+        files.extend(listing?);
     }
 
     files.sort_by(|a, b| a.vendor_relative_path.cmp(&b.vendor_relative_path));
 
     Ok(files)
+}
+
+fn package_files(config: &Config, package: &Package) -> Result<Vec<PackageFile>, PackagesError> {
+    let Some(path) = &package.path else {
+        return Ok(Vec::new());
+    };
+
+    let relative_paths = list_package(package, path, config.exclude_git_files)?;
+
+    Ok(relative_paths
+        .into_iter()
+        .map(|relative| package_file(config, package, path, relative))
+        .collect())
 }
 
 /// Every file under `root`, as a path relative to it using `/`.
@@ -161,7 +180,7 @@ fn copy_exclusion(
         .map(|pattern| CopyExclusion::PatternMatched(pattern.source().to_string()))
 }
 
-pub(super) fn is_target_the_vendor_directory(config: &Config) -> bool {
+pub fn is_target_the_vendor_directory(config: &Config) -> bool {
     let normalise = |path: &str| -> PathBuf {
         path.trim_matches('/')
             .split('/')

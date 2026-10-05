@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::Config;
+use crate::config::{Config, Parallel};
 use crate::php_pattern::PhpPattern;
 
 fn files_of(config: &Config) -> Vec<PackageFile> {
@@ -236,4 +236,37 @@ fn describes_why_a_file_is_not_copied() {
         CopyExclusion::TargetIsVendor.to_string(),
         "the target directory is the vendor directory"
     );
+}
+
+#[test]
+fn the_listing_does_not_depend_on_the_number_of_workers() {
+    let listing = |parallel: Parallel| -> Vec<String> {
+        let mut config = fixture_config();
+        config.parallel = parallel;
+
+        files_of(&config)
+            .iter()
+            .map(|file| {
+                format!(
+                    "{} {} {}",
+                    file.vendor_relative_path,
+                    file.copy,
+                    file.source_path.display()
+                )
+            })
+            .collect()
+    };
+
+    let sequential = listing(Parallel::Disabled);
+
+    // Compare real listings, not two empty ones.
+    assert_eq!(sequential.len(), 11);
+
+    for workers in [2, 3, 8] {
+        assert_eq!(
+            listing(Parallel::Workers(workers)),
+            sequential,
+            "{workers} workers"
+        );
+    }
 }

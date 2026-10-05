@@ -47,7 +47,7 @@ fn infers_prefixes_from_the_package_name() {
     let config = config("{}", r#"{"name": "acme/my-plugin"}"#);
 
     assert_eq!(config.namespace_prefix.as_deref(), Some("Acme\\My_Plugin"));
-    assert_eq!(config.classmap_prefix.as_deref(), Some("Acme_My_Plugin"));
+    assert_eq!(config.classmap_prefix.as_deref(), Some("Acme_My_Plugin_"));
 }
 
 #[test]
@@ -141,4 +141,62 @@ fn explicit_classmap_output_wins() {
     );
 
     assert!(config.classmap_output);
+}
+
+#[test]
+fn an_inferred_classmap_prefix_always_ends_in_an_underscore() {
+    let prefix = |composer: &str| config("{}", composer).classmap_prefix;
+
+    // From the package name, which PHP Strauss leaves without one.
+    assert_eq!(
+        prefix(r#"{"name": "acme/my-plugin"}"#).as_deref(),
+        Some("Acme_My_Plugin_")
+    );
+    assert_eq!(
+        prefix(r#"{"name": "roots/bedrock"}"#).as_deref(),
+        Some("Roots_Bedrock_")
+    );
+
+    // From a namespace; a PSR-4 key ends in a backslash, which becomes one.
+    assert_eq!(
+        prefix(r#"{"autoload": {"psr-4": {"Acme\\Plugin\\": "src/"}}}"#).as_deref(),
+        Some("Acme_Plugin_")
+    );
+
+    // From a key without the trailing backslash.
+    assert_eq!(
+        prefix(r#"{"autoload": {"psr-4": {"Acme\\Plugin": "src/"}}}"#).as_deref(),
+        Some("Acme_Plugin_")
+    );
+
+    // From a PSR-0 key that already ends in one: not doubled.
+    assert_eq!(
+        prefix(r#"{"autoload": {"psr-0": {"Acme_Plugin_": "src/"}}}"#).as_deref(),
+        Some("Acme_Plugin_")
+    );
+
+    // From the namespace prefix.
+    let from_namespace = strauss_only(r#"{"namespace_prefix": "Acme\\Plugin"}"#);
+
+    assert_eq!(
+        from_namespace.classmap_prefix.as_deref(),
+        Some("Acme_Plugin_")
+    );
+}
+
+#[test]
+fn an_explicit_classmap_prefix_is_used_exactly_as_written() {
+    for prefix in ["Acme_", "Acme", "Acme__"] {
+        let config = strauss_only(&format!(r#"{{"classmap_prefix": "{prefix}"}}"#));
+
+        assert_eq!(config.classmap_prefix.as_deref(), Some(prefix));
+    }
+}
+
+#[test]
+fn the_default_functions_prefix_follows_the_inferred_classmap_prefix() {
+    let config = config("{}", r#"{"name": "roots/bedrock"}"#);
+
+    // `roots_bedrock_evo()`, not `roots_bedrockevo()`.
+    assert_eq!(config.functions_prefix.as_deref(), Some("roots_bedrock_"));
 }
