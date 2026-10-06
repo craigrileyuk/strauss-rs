@@ -7,3 +7,5 @@ mod signatures;
 mod statements;
 
 pub(super) use statements::collect_stmt;
+
+pub use names::resolve_written_name;

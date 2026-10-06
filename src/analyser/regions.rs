@@ -8,16 +8,42 @@ use php_ast::{
 };
 use php_lexer::TokenKind;
 
-/// PHP functions whose first argument is a string naming a function.
-const CALLABLE_STRING_FUNCTIONS: &[&str] = &[
-    "function_exists",
-    "call_user_func",
-    "call_user_func_array",
-    "forward_static_call",
-    "forward_static_call_array",
-    "register_shutdown_function",
-    "register_tick_function",
-    "unregister_tick_function",
+/// Functions that take a callable, with the position of the argument. A string
+/// there names a function, so it is a symbol and not just text.
+const CALLABLE_STRING_FUNCTIONS: &[(&str, usize)] = &[
+    ("function_exists", 0),
+    ("is_callable", 0),
+    ("call_user_func", 0),
+    ("call_user_func_array", 0),
+    ("forward_static_call", 0),
+    ("forward_static_call_array", 0),
+    ("register_shutdown_function", 0),
+    ("register_tick_function", 0),
+    ("unregister_tick_function", 0),
+    ("spl_autoload_register", 0),
+    ("set_error_handler", 0),
+    ("set_exception_handler", 0),
+    ("ob_start", 0),
+    ("array_map", 0),
+    ("array_filter", 1),
+    ("array_walk", 1),
+    ("array_walk_recursive", 1),
+    ("array_reduce", 1),
+    ("usort", 1),
+    ("uasort", 1),
+    ("uksort", 1),
+    ("preg_replace_callback", 1),
+    ("iterator_apply", 1),
+    // Wordpress hooks, which most code that is prefixed is for.
+    ("add_action", 1),
+    ("add_filter", 1),
+    ("remove_action", 1),
+    ("remove_filter", 1),
+    ("has_action", 1),
+    ("has_filter", 1),
+    ("register_activation_hook", 1),
+    ("register_deactivation_hook", 1),
+    ("register_uninstall_hook", 1),
 ];
 
 /// PHP functions whose first argument is a string naming a constant.
@@ -27,10 +53,12 @@ const CONSTANT_STRING_FUNCTIONS: &[&str] = &["define", "defined"];
 /// appears in. This works from the token stream rather than the AST, so a
 /// string is found wherever it appears, including places the reference walk
 /// doesn't visit.
-pub(super) fn assign_lexical_regions(source: &str, analysis: &mut FileAnalysis) {
-    let (tokens, _errors) = php_lexer::lex_all(source);
-
-    for token in tokens {
+pub(super) fn assign_lexical_regions(
+    source: &str,
+    tokens: &[php_lexer::Token],
+    analysis: &mut FileAnalysis,
+) {
+    for token in tokens.iter().copied() {
         let kind = match token.kind {
             TokenKind::SingleQuotedString
             | TokenKind::DoubleQuotedString
@@ -70,8 +98,8 @@ pub(super) fn assign_lexical_regions(source: &str, analysis: &mut FileAnalysis) 
     }
 }
 
-/// Records the first argument of `define('NAME', …)`, `function_exists('name')`
-/// and similar, which name a symbol in a string.
+/// Records the argument of `define('NAME', …)`, `function_exists('name')`,
+/// `add_action('hook', 'callback')` and similar that names a symbol in a string.
 pub(super) fn collect_string_arg_region(call: &FunctionCallExpr, context: &AnalysisContext) {
     let ExprKind::Identifier(name) = &call.name.kind else {
         return;
@@ -79,30 +107,37 @@ pub(super) fn collect_string_arg_region(call: &FunctionCallExpr, context: &Analy
 
     let name = name.strip_prefix('\\').unwrap_or(name);
 
-    let kind = if CALLABLE_STRING_FUNCTIONS
+    let callable = CALLABLE_STRING_FUNCTIONS
         .iter()
-        .any(|function| function.eq_ignore_ascii_case(name))
-    {
-        RegionKind::CallableStringArg
+        .find(|(function, _)| function.eq_ignore_ascii_case(name));
+
+    let (kind, position) = if let Some((_, position)) = callable {
+        (RegionKind::CallableStringArg, *position)
     } else if CONSTANT_STRING_FUNCTIONS
         .iter()
         .any(|function| function.eq_ignore_ascii_case(name))
     {
-        RegionKind::DefineStringArg
+        (RegionKind::DefineStringArg, 0)
     } else {
         return;
     };
 
-    let Some(first) = call.args.first() else {
-        return;
-    };
-
-    // A named first argument may not be the one that names the symbol.
-    if first.name.is_some() {
+    // Positions count unnamed arguments; a named one may not be the one that
+    // names the symbol, and shifts the rest.
+    if call
+        .args
+        .iter()
+        .take(position + 1)
+        .any(|arg| arg.name.is_some())
+    {
         return;
     }
 
-    let Some(value) = &first.value else {
+    let Some(arg) = call.args.get(position) else {
+        return;
+    };
+
+    let Some(value) = &arg.value else {
         return;
     };
 

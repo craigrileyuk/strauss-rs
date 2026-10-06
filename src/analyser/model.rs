@@ -29,11 +29,19 @@ pub struct FileAnalysis {
 #[derive(Debug)]
 pub struct NamespaceAnalysis {
     pub namespace: Option<String>,
+
+    /// Where the name is written in `namespace Foo;`. `None` for the global
+    /// namespace, which is not written.
+    pub name_span: Option<Span>,
+
     /// Byte range of the source this namespace covers. A comment belongs to
     /// the namespace that is current where it appears, so a docblock above
     /// `namespace Foo;` belongs to the preceding (global) segment.
     pub span: Span,
     pub imports: Vec<Import>,
+
+    /// The `use A\{B, C}` statements, which are edited as a whole.
+    pub group_uses: Vec<GroupUse>,
     pub symbols: Vec<DeclaredSymbol>,
     pub references: Vec<Reference>,
     /// Strings and comments, in source order. Which of them name a symbol
@@ -63,8 +71,9 @@ pub enum RegionKind {
     Comment,
     /// `/** */` comments.
     DocComment,
-    /// First argument of a function that takes a function name, e.g.
-    /// `function_exists('foo')`. Excludes the quotes.
+    /// The argument of a function that takes a function name, e.g.
+    /// `function_exists('foo')` or the callback of `add_action()`. Excludes
+    /// the quotes.
     CallableStringArg,
     /// First argument of `define()` or `defined()`. Excludes the quotes.
     DefineStringArg,
@@ -72,9 +81,32 @@ pub enum RegionKind {
 
 #[derive(Debug)]
 pub struct Import {
+    /// The full name, without a leading backslash. For an item in a group
+    /// `use`, the prefix is included.
     pub name: String,
     pub alias: Option<String>,
     pub kind: ImportKind,
+
+    /// Where the name is written, without a leading backslash. For an item in
+    /// a group `use`, only the part inside the braces. `None` if it could not
+    /// be found.
+    pub span: Option<Span>,
+
+    /// Where the alias after `as` is written.
+    pub alias_span: Option<Span>,
+
+    /// The `use` statement it is in, if it is a group `use`.
+    pub group: Option<usize>,
+}
+
+/// `use A\B\{C, D as E};`
+#[derive(Debug)]
+pub struct GroupUse {
+    /// The whole statement, from `use` to `;`.
+    pub span: Span,
+
+    /// The `A\B`.
+    pub prefix_span: Span,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -89,6 +121,11 @@ pub struct DeclaredSymbol {
     /// The full name, without a leading backslash.
     pub name: String,
     pub kind: SymbolKind,
+
+    /// Where the name is written in the declaration (`Foo` in `class Foo`).
+    /// `None` for a constant made with `define()`, whose name is a string, and
+    /// if it could not be found.
+    pub name_span: Option<Span>,
 
     /// `abstract class`.
     pub is_abstract: bool,
@@ -109,6 +146,7 @@ impl DeclaredSymbol {
         Self {
             name,
             kind,
+            name_span: None,
             is_abstract: false,
             extends: Vec::new(),
             implements: Vec::new(),

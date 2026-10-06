@@ -10,7 +10,7 @@ use crate::analyser::references::signatures::{
 use php_ast::{
     owned::{
         ClassConstDecl, ClassDecl, ClassMember, ClassMemberKind, EnumDecl, EnumMemberKind,
-        InterfaceDecl, Name, PropertyDecl, TraitDecl, TraitUseDecl,
+        InterfaceDecl, Name, PropertyDecl, TraitAdaptationKind, TraitDecl, TraitUseDecl,
     },
     resolve::NameContext,
 };
@@ -142,6 +142,30 @@ fn collect_trait_use(
 ) {
     for name in trait_use.traits.iter() {
         collect_class_name(name, context, references);
+    }
+
+    // The traits named by `A::m insteadof B;` and `A::m as n;`. The method
+    // names are not classes.
+    for adaptation in trait_use.adaptations.iter() {
+        match &adaptation.kind {
+            TraitAdaptationKind::Precedence {
+                trait_name,
+                insteadof,
+                ..
+            } => {
+                collect_class_name(trait_name, context, references);
+
+                for name in insteadof.iter() {
+                    collect_class_name(name, context, references);
+                }
+            }
+
+            TraitAdaptationKind::Alias { trait_name, .. } => {
+                if let Some(name) = trait_name {
+                    collect_class_name(name, context, references);
+                }
+            }
+        }
     }
 }
 

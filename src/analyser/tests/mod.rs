@@ -10,6 +10,7 @@ mod names;
 mod namespaces;
 mod references;
 mod regions;
+mod spans;
 
 pub(super) fn analyse_php(source: &str) -> FileAnalysis {
     let result = parse(source);

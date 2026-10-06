@@ -16,6 +16,9 @@ pub enum Reason {
     Autoloaded,
     /// Its namespace matches a `namespace_replacement_patterns` entry.
     MatchesNamespaceReplacementPattern,
+    /// Nothing autoloads it, but it is in a namespace that is renamed. The
+    /// namespace is renamed in every file that declares it, so it moves with it.
+    FollowsNamespace,
 
     // ---- not renamed ----
     /// Nothing autoloads it, so nothing outside its package needs to find it.
@@ -60,6 +63,7 @@ impl Reason {
         match self {
             Reason::Autoloaded => "autoloaded",
             Reason::MatchesNamespaceReplacementPattern => "namespace_replacement_pattern",
+            Reason::FollowsNamespace => "follows_namespace",
             Reason::NotAutoloaded => "not_autoloaded",
             Reason::PackageExcludedFromCopy(_) => "package_excluded_from_copy",
             Reason::PackageExcludedFromPrefix(_) => "package_excluded_from_prefix",
@@ -81,7 +85,9 @@ impl Reason {
     pub fn is_rename(&self) -> bool {
         matches!(
             self,
-            Reason::Autoloaded | Reason::MatchesNamespaceReplacementPattern
+            Reason::Autoloaded
+                | Reason::MatchesNamespaceReplacementPattern
+                | Reason::FollowsNamespace
         )
     }
 }
@@ -92,6 +98,9 @@ impl fmt::Display for Reason {
             Reason::Autoloaded => formatter.write_str("it is autoloaded"),
             Reason::MatchesNamespaceReplacementPattern => {
                 formatter.write_str("its namespace matches namespace_replacement_patterns")
+            }
+            Reason::FollowsNamespace => {
+                formatter.write_str("it is in a namespace that is renamed, so it moves with it")
             }
             Reason::NotAutoloaded => formatter.write_str("it is not autoloaded"),
             Reason::PackageExcludedFromCopy(package) => {

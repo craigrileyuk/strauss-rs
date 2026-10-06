@@ -1,0 +1,10 @@
+{
+    "namespace_prefix": "P\\V",
+    "classmap_prefix": "P_",
+    "functions_prefix": "p_",
+    "constant_prefix": "P_C_",
+    "exclude_from_prefix": {
+        "packages": ["acme/keep"],
+        "namespaces": ["Acme\\Core\\Excluded"]
+    }
+}

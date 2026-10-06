@@ -335,3 +335,46 @@ fn plan_does_not_take_options_that_only_affect_the_configuration() {
 
     assert_eq!(error.kind(), ErrorKind::UnknownArgument);
 }
+
+fn diff_args(args: &[&str]) -> DiffArgs {
+    let mut full = vec!["diff"];
+    full.extend_from_slice(args);
+
+    match parse_args(&full).unwrap().command {
+        Command::Diff(args) => args,
+        other => panic!("expected the diff command, got {other:?}"),
+    }
+}
+
+#[test]
+fn diff_takes_a_project_workers_packages_and_json() {
+    let args = diff_args(&[
+        "-C",
+        "plugin",
+        "--parallel=2",
+        "--package",
+        "acme/a",
+        "--package=acme/b",
+        "--json",
+    ]);
+
+    assert_eq!(args.scan.project.project_dir, PathBuf::from("plugin"));
+    assert_eq!(args.scan.parallel.parallel, Some(Parallel::Workers(2)));
+    assert_eq!(args.packages, ["acme/a", "acme/b"]);
+    assert!(args.json);
+}
+
+#[test]
+fn diff_shows_a_diff_of_every_package_by_default() {
+    let args = diff_args(&[]);
+
+    assert!(args.packages.is_empty());
+    assert!(!args.json);
+}
+
+#[test]
+fn diff_does_not_take_options_that_only_affect_the_configuration() {
+    let error = parse_args(&["diff", "--updateCallSites"]).unwrap_err();
+
+    assert_eq!(error.kind(), ErrorKind::UnknownArgument);
+}

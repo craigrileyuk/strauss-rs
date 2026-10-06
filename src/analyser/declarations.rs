@@ -1,8 +1,10 @@
 //! The symbols a file declares.
 
 use crate::analyser::model::{DeclaredSymbol, SymbolKind};
+use crate::analyser::spans::SourceTokens;
 use php_ast::owned::{Expr, ExprKind, Name, Stmt, StmtKind};
 use php_ast::resolve::{NameContext, NameResolver, ResolvedName};
+use php_lexer::TokenKind;
 
 /// Records every symbol declared by `stmts`, including declarations nested
 /// in blocks, conditionals, `try` statements and function bodies.
@@ -10,6 +12,7 @@ pub(super) fn collect_declarations(
     stmts: &[Stmt],
     namespace: Option<&str>,
     resolver: &NameResolver,
+    located: &SourceTokens,
     symbols: &mut Vec<DeclaredSymbol>,
 ) {
     for stmt in stmts {
@@ -20,6 +23,7 @@ pub(super) fn collect_declarations(
 
                     let symbol = symbols.last_mut().expect("just pushed");
 
+                    symbol.name_span = located.declaration_name(stmt.span, TokenKind::Class, name);
                     symbol.is_abstract = class.modifiers.is_abstract;
                     symbol.extends = class_names(class.extends.iter(), resolver);
                     symbol.implements = class_names(class.implements.iter(), resolver);
@@ -30,14 +34,20 @@ pub(super) fn collect_declarations(
                 if let Some(name) = &interface.name {
                     push_symbol(symbols, name, namespace, SymbolKind::Interface);
 
-                    symbols.last_mut().expect("just pushed").extends =
-                        class_names(interface.extends.iter(), resolver);
+                    let symbol = symbols.last_mut().expect("just pushed");
+
+                    symbol.name_span =
+                        located.declaration_name(stmt.span, TokenKind::Interface, name);
+                    symbol.extends = class_names(interface.extends.iter(), resolver);
                 }
             }
 
             StmtKind::Trait(trait_decl) => {
                 if let Some(name) = &trait_decl.name {
                     push_symbol(symbols, name, namespace, SymbolKind::Trait);
+
+                    symbols.last_mut().expect("just pushed").name_span =
+                        located.declaration_name(stmt.span, TokenKind::Trait, name);
                 }
             }
 
@@ -47,6 +57,7 @@ pub(super) fn collect_declarations(
 
                     let symbol = symbols.last_mut().expect("just pushed");
 
+                    symbol.name_span = located.declaration_name(stmt.span, TokenKind::Enum_, name);
                     symbol.implements = class_names(enum_decl.implements.iter(), resolver);
                     symbol.backing_type = enum_decl
                         .scalar_type
@@ -58,9 +69,12 @@ pub(super) fn collect_declarations(
             StmtKind::Function(function) => {
                 if let Some(name) = &function.name {
                     push_symbol(symbols, name, namespace, SymbolKind::Function);
+
+                    symbols.last_mut().expect("just pushed").name_span =
+                        located.declaration_name(stmt.span, TokenKind::Function, name);
                 }
 
-                collect_declarations(&function.body.stmts, namespace, resolver, symbols);
+                collect_declarations(&function.body.stmts, namespace, resolver, located, symbols);
             }
 
             // `const FOO = 1;` is namespaced like any other declaration.
@@ -68,6 +82,10 @@ pub(super) fn collect_declarations(
                 for item in items.iter() {
                     if let Some(name) = &item.name {
                         push_symbol(symbols, name, namespace, SymbolKind::Constant);
+
+                        // The item starts with its name: `A = 1`.
+                        symbols.last_mut().expect("just pushed").name_span =
+                            located.name_at(item.span.start, name);
                     }
                 }
             }
@@ -80,7 +98,7 @@ pub(super) fn collect_declarations(
             }
 
             StmtKind::Block(block) => {
-                collect_declarations(&block.stmts, namespace, resolver, symbols);
+                collect_declarations(&block.stmts, namespace, resolver, located, symbols);
             }
 
             StmtKind::If(if_stmt) => {
@@ -88,6 +106,7 @@ pub(super) fn collect_declarations(
                     std::slice::from_ref(if_stmt.then_branch.as_ref()),
                     namespace,
                     resolver,
+                    located,
                     symbols,
                 );
 
@@ -96,6 +115,7 @@ pub(super) fn collect_declarations(
                         std::slice::from_ref(&branch.body),
                         namespace,
                         resolver,
+                        located,
                         symbols,
                     );
                 }
@@ -105,20 +125,21 @@ pub(super) fn collect_declarations(
                         std::slice::from_ref(branch.as_ref()),
                         namespace,
                         resolver,
+                        located,
                         symbols,
                     );
                 }
             }
 
             StmtKind::TryCatch(try_catch) => {
-                collect_declarations(&try_catch.body.stmts, namespace, resolver, symbols);
+                collect_declarations(&try_catch.body.stmts, namespace, resolver, located, symbols);
 
                 for catch in try_catch.catches.iter() {
-                    collect_declarations(&catch.body.stmts, namespace, resolver, symbols);
+                    collect_declarations(&catch.body.stmts, namespace, resolver, located, symbols);
                 }
 
                 if let Some(finally) = &try_catch.finally {
-                    collect_declarations(&finally.stmts, namespace, resolver, symbols);
+                    collect_declarations(&finally.stmts, namespace, resolver, located, symbols);
                 }
             }
 
@@ -128,6 +149,7 @@ pub(super) fn collect_declarations(
                         std::slice::from_ref(body.as_ref()),
                         namespace,
                         resolver,
+                        located,
                         symbols,
                     );
                 }

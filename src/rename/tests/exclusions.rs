@@ -228,15 +228,18 @@ fn constants_can_be_excluded_by_package() {
 }
 
 #[test]
-fn constants_can_be_excluded_by_namespace() {
+fn a_constant_in_a_renamed_namespace_cannot_be_excluded_by_namespace() {
     let run = run(|config| {
         config.exclude_constants.exclusions.namespaces = vec!["Acme\\Psr4".to_string()]
     });
 
+    // `const VERSION` is in the namespace, which is renamed in the file that
+    // declares it, so the constant goes with it.
     assert_eq!(
         reason(&run.plan, SymbolKind::Constant, "Acme\\Psr4\\VERSION"),
-        &Reason::ConstantNamespaceExcluded("Acme\\Psr4".to_string())
+        &Reason::FollowsNamespace
     );
+    assert!(symbol(&run.plan, SymbolKind::Constant, "Acme\\Psr4\\VERSION").rename);
     assert!(symbol(&run.plan, SymbolKind::Class, "Acme\\Psr4\\Client").rename);
 }
 

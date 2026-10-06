@@ -1,0 +1,9 @@
+{
+    "name": "acme/edit-app",
+    "require": {
+        "acme/core": "*",
+        "acme/globals": "*",
+        "acme/consumer": "*",
+        "acme/keep": "*"
+    }
+}

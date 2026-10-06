@@ -1,0 +1,6 @@
+{
+    "name": "acme/loader-app",
+    "require": {
+        "acme/lib": "*"
+    }
+}

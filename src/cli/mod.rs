@@ -9,7 +9,9 @@ use php_rs_parser::parse;
 
 use crate::analyser;
 use crate::config::{Config, Parallel, UpdateCallSites};
-use crate::packages::{self, PackageSet};
+use crate::edits::{self, EditPlan};
+use crate::output;
+use crate::packages::{self, PackageFile, PackageSet};
 use crate::rename::{self, PlannedSymbol};
 use crate::symbols::{self, SymbolTable};
 
@@ -62,6 +64,21 @@ enum Command {
     /// counts.
     Plan(PlanArgs),
 
+    /// Show the changes that would be made to the files, as a diff.
+    ///
+    /// Nothing is written. Runs the same analysis as `plan`, then works out
+    /// every place that has to change so that the renamed symbols still work.
+    /// The summary and any warnings go to stderr.
+    Diff(DiffArgs),
+
+    /// Prefix the packages: copy them to `target_directory` with their
+    /// namespaces and global symbols renamed, and write the autoloader.
+    ///
+    /// Does what `diff` shows, to the files. `vendor` is left as it is unless
+    /// `delete_vendor_files` or `delete_vendor_packages` is set. A summary and
+    /// any warnings go to stderr.
+    Prefix(PrefixArgs),
+
     /// Analyse a PHP file and print the symbols it declares and refers to.
     Analyse {
         /// The PHP file to analyse.
@@ -113,6 +130,37 @@ struct PlanArgs {
     /// once.
     #[arg(long = "package", value_name = "NAME")]
     packages: Vec<String>,
+}
+
+/// A project, how to analyse its files, and which files to show.
+#[derive(Debug, Args)]
+struct DiffArgs {
+    #[command(flatten)]
+    scan: ScanArgs,
+
+    /// Only show the files of this package. Can be given more than once.
+    #[arg(long = "package", value_name = "NAME")]
+    packages: Vec<String>,
+
+    /// Show the edits as JSON, with their positions, instead of a diff.
+    #[arg(long)]
+    json: bool,
+}
+
+/// A project, how to analyse its files, and whether to write the result.
+#[derive(Debug, Args)]
+struct PrefixArgs {
+    #[command(flatten)]
+    scan: ScanArgs,
+
+    /// Work out what would be written, and write nothing.
+    #[arg(long)]
+    dry_run: bool,
+
+    /// Print what was written as JSON, instead of leaving it to the summary
+    /// on stderr.
+    #[arg(long)]
+    json: bool,
 }
 
 /// A project, and options that override its configuration.
@@ -191,6 +239,18 @@ fn execute(command: Command) -> Result {
 
             Ok(())
         }
+
+        Command::Diff(args) => {
+            let output = render_diff(&args)?;
+
+            if !output.is_empty() {
+                println!("{output}");
+            }
+
+            Ok(())
+        }
+
+        Command::Prefix(args) => prefix(&args),
 
         Command::Analyse { file } => analyse_file(&file),
     }
@@ -300,6 +360,159 @@ fn render_plan(args: &PlanArgs) -> Result<String> {
         files_excluded_from_prefix: &plan.files_excluded_from_prefix,
         symbols: selected,
     })?)
+}
+
+/// Everything worked out before anything is written.
+struct Analysed {
+    config: Config,
+    set: PackageSet,
+    files: Vec<PackageFile>,
+    rename: rename::RenamePlan,
+    edits: EditPlan,
+}
+
+/// Runs the analysis that `diff` and `prefix` share, reporting problems on
+/// stderr.
+fn analyse_project(args: &ScanArgs) -> Result<Analysed> {
+    let mut config = load_config(&args.project)?;
+
+    if let Some(parallel) = args.parallel.parallel {
+        config.parallel = parallel;
+    }
+
+    let set = packages::enumerate_packages(&config)?;
+    let mut files = packages::enumerate_files(&config, &set)?;
+    let table = symbols::scan(&config, &files);
+
+    rename::exclude_namespaces_from_copy(&config, &mut files, &table);
+
+    let rename = rename::plan(&config, &set, &files, &table);
+    let edits = edits::plan(&config, &files, &table, &rename);
+
+    report_problems(&set);
+    report_scan_warnings(&table);
+
+    for warning in &edits.warnings {
+        eprintln!("warning: {}", warning.message);
+    }
+
+    Ok(Analysed {
+        config,
+        set,
+        files,
+        rename,
+        edits,
+    })
+}
+
+fn render_diff(args: &DiffArgs) -> Result<String> {
+    let Analysed {
+        edits: mut edit_plan,
+        ..
+    } = analyse_project(&args.scan)?;
+
+    if !args.packages.is_empty() {
+        edit_plan.files.retain(|file| {
+            args.packages
+                .iter()
+                .any(|wanted| wanted.eq_ignore_ascii_case(&file.package))
+        });
+    }
+
+    eprintln!(
+        "{} files to change with {} edits; {} unchanged; {} skipped",
+        edit_plan.files.len(),
+        edit_plan.edit_count(),
+        edit_plan.unchanged_files,
+        edit_plan.skipped.len()
+    );
+
+    if args.json {
+        return Ok(serde_json::to_string_pretty(&edit_plan)?);
+    }
+
+    let mut output = String::new();
+
+    for file in &edit_plan.files {
+        let original = fs::read_to_string(&file.source_path)
+            .map_err(|error| format!("could not read {}: {error}", file.source_path.display()))?;
+
+        let changed = edits::apply_edits(&original, &file.edits)
+            .map_err(|error| format!("{}: {error}", file.file))?;
+
+        let diff = similar::TextDiff::from_lines(&original, &changed);
+
+        output.push_str(
+            &diff
+                .unified_diff()
+                .context_radius(2)
+                .header(&format!("a/{}", file.file), &format!("b/{}", file.file))
+                .to_string(),
+        );
+    }
+
+    Ok(output.trim_end().to_string())
+}
+
+fn prefix(args: &PrefixArgs) -> Result {
+    let analysed = analyse_project(&args.scan)?;
+
+    let report = output::write(
+        &output::Input {
+            config: &analysed.config,
+            packages: &analysed.set,
+            files: &analysed.files,
+            rename: &analysed.rename,
+            edits: &analysed.edits,
+        },
+        &output::Options::new(&analysed.config, args.dry_run, output::today()),
+    )?;
+
+    for warning in &report.warnings {
+        eprintln!("warning: {warning}");
+    }
+
+    let verb = if args.dry_run { "Would write" } else { "Wrote" };
+
+    eprintln!(
+        "{verb} {} files to {} ({} modified)",
+        report.written, analysed.config.target_directory, report.modified
+    );
+
+    if !report.autoloader.is_empty() {
+        eprintln!(
+            "{verb} {} with {} classes",
+            report.autoloader.join(" and "),
+            report.classmap_entries
+        );
+    }
+
+    if report.deleted_files > 0 {
+        eprintln!(
+            "{} {} files from {}{}",
+            if args.dry_run {
+                "Would delete"
+            } else {
+                "Deleted"
+            },
+            report.deleted_files,
+            analysed.config.vendor_directory,
+            if report.deleted_packages.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", including {} whole packages",
+                    report.deleted_packages.len()
+                )
+            }
+        );
+    }
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    }
+
+    Ok(())
 }
 
 fn report_scan_warnings(table: &SymbolTable) {
