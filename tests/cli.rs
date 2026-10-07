@@ -166,7 +166,7 @@ fn shows_usage_without_a_command() {
     let output = strauss(&[]);
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(stderr(&output).contains("Usage: strauss-rs <COMMAND>"));
+    assert!(stderr(&output).contains("Usage: strauss-rs [OPTIONS] <COMMAND>"));
 }
 
 #[test]

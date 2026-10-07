@@ -23,7 +23,20 @@ pub struct Analysed {
 /// Analyses each file on `workers` threads, returning the results in the
 /// order of `paths`.
 pub fn analyse_files(paths: &[&Path], workers: usize) -> Vec<Result<Analysed, String>> {
-    parallel::pool(workers).install(|| paths.par_iter().map(|path| analyse_file(path)).collect())
+    let stage = crate::progress::stage("Analysing", paths.len());
+
+    parallel::pool(workers).install(|| {
+        paths
+            .par_iter()
+            .map(|path| {
+                let analysed = analyse_file(path);
+
+                stage.tick();
+
+                analysed
+            })
+            .collect()
+    })
 }
 
 /// Analyses one file. A file that can't be read or parsed is an error message,
