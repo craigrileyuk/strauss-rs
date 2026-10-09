@@ -106,6 +106,10 @@ pub struct EditPlan {
     /// Files with something to change.
     pub files: Vec<FileEdits>,
 
+    /// The project's own files to change in place, from `update_call_sites`.
+    /// `file` is relative to the project, and `package` is empty.
+    pub call_sites: Vec<FileEdits>,
+
     /// How many files were planned and need no change.
     pub unchanged_files: usize,
 
@@ -117,7 +121,11 @@ pub struct EditPlan {
 
 impl EditPlan {
     pub fn edit_count(&self) -> usize {
-        self.files.iter().map(|file| file.edits.len()).sum()
+        self.files
+            .iter()
+            .chain(&self.call_sites)
+            .map(|file| file.edits.len())
+            .sum()
     }
 
     pub fn get(&self, file: &str) -> Option<&FileEdits> {

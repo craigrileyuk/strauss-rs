@@ -64,6 +64,7 @@ fn every_option_round_trips() {
             "exclude_git_files": false,
             "include_modified_date": false,
             "include_author": false,
+            "include_autoloader": true,
             "classmap_output": false
         }"#,
         None,

@@ -196,3 +196,181 @@ fn many_files_with_the_same_problem_are_one_warning() {
         "{text}"
     );
 }
+
+/// The edit fixture with a plugin of its own that uses `Acme\Core\Client`, and
+/// `update_call_sites` set to `setting`.
+fn project_with_call_sites(test: &str, setting: &str) -> PathBuf {
+    let project = copy_of("edit-fixture", test);
+
+    let composer = fs::read_to_string(project.join("composer.json")).unwrap();
+    fs::write(
+        project.join("composer.json"),
+        composer.replacen(
+            "\"require\"",
+            "\"autoload\": {\"psr-4\": {\"Me\\\\Plugin\\\\\": \"src/\"}},\n    \"require\"",
+            1,
+        ),
+    )
+    .unwrap();
+
+    let config = fs::read_to_string(project.join("strauss.json")).unwrap();
+    fs::write(
+        project.join("strauss.json"),
+        config.replacen(
+            '{',
+            &format!("{{\n    \"update_call_sites\": {setting},"),
+            1,
+        ),
+    )
+    .unwrap();
+
+    fs::create_dir_all(project.join("src")).unwrap();
+    fs::write(
+        project.join("src/Plugin.php"),
+        "<?php\nnamespace Me\\Plugin;\n\nuse Acme\\Core\\Client;\n\nclass Plugin\n{\n    public function run()\n    {\n        return new Client();\n    }\n}\n",
+    )
+    .unwrap();
+
+    project
+}
+
+#[test]
+fn updates_the_projects_own_files_when_update_call_sites_is_on() {
+    let project = project_with_call_sites("call-sites", "true");
+    let output = prefix(&project, &[]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stderr(&output).contains("Updated 1 of your own files"));
+
+    let plugin = fs::read_to_string(project.join("src/Plugin.php")).unwrap();
+
+    assert!(plugin.contains("use P\\V\\Acme\\Core\\Client;"), "{plugin}");
+    assert!(plugin.contains("namespace Me\\Plugin;"), "{plugin}");
+}
+
+#[test]
+fn leaves_the_projects_own_files_alone_by_default() {
+    let project = project_with_call_sites("call-sites-off", "false");
+    let before = fs::read_to_string(project.join("src/Plugin.php")).unwrap();
+    let output = prefix(&project, &[]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        fs::read_to_string(project.join("src/Plugin.php")).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn the_command_line_overrides_update_call_sites() {
+    let project = project_with_call_sites("call-sites-flag", "false");
+    let output = prefix(&project, &["--updateCallSites"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        fs::read_to_string(project.join("src/Plugin.php"))
+            .unwrap()
+            .contains("P\\V\\Acme\\Core\\Client")
+    );
+}
+
+#[test]
+fn a_dry_run_does_not_change_the_projects_own_files() {
+    let project = project_with_call_sites("call-sites-dry", "true");
+    let before = fs::read_to_string(project.join("src/Plugin.php")).unwrap();
+    let output = prefix(&project, &["--dry-run"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stderr(&output).contains("Would update 1 of your own files"));
+    assert_eq!(
+        fs::read_to_string(project.join("src/Plugin.php")).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn only_the_listed_paths_are_updated_when_update_call_sites_is_a_list() {
+    let project = project_with_call_sites("call-sites-list", "[\"elsewhere\"]");
+    let before = fs::read_to_string(project.join("src/Plugin.php")).unwrap();
+    let output = prefix(&project, &[]);
+
+    assert!(output.status.success());
+    assert_eq!(
+        fs::read_to_string(project.join("src/Plugin.php")).unwrap(),
+        before
+    );
+    assert!(stderr(&output).contains("elsewhere does not exist"));
+}
+
+const COMPOSER_AUTOLOAD: &str = "<?php\n\nrequire_once __DIR__ . '/composer/autoload_real.php';\n\nreturn ComposerAutoloaderInitabc::getLoader();\n";
+
+fn with_include_autoloader(test: &str, setting: bool) -> PathBuf {
+    let project = copy_of("edit-fixture", test);
+
+    fs::write(project.join("vendor/autoload.php"), COMPOSER_AUTOLOAD).unwrap();
+
+    let config = fs::read_to_string(project.join("strauss.json")).unwrap();
+    fs::write(
+        project.join("strauss.json"),
+        config.replacen(
+            '{',
+            &format!("{{\n    \"include_autoloader\": {setting},"),
+            1,
+        ),
+    )
+    .unwrap();
+
+    project
+}
+
+#[test]
+fn includes_the_autoloader_when_include_autoloader_is_on() {
+    let project = with_include_autoloader("include-on", true);
+    let output = prefix(&project, &[]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stderr(&output).contains("Updated vendor/autoload.php"));
+    assert!(
+        fs::read_to_string(project.join("vendor/autoload.php"))
+            .unwrap()
+            .contains("require_once __DIR__ . '/../vendor-prefixed/autoload.php';")
+    );
+
+    // A second run leaves it as it is.
+    let output = prefix(&project, &[]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(!stderr(&output).contains("Updated vendor/autoload.php"));
+    assert_eq!(
+        fs::read_to_string(project.join("vendor/autoload.php"))
+            .unwrap()
+            .matches("vendor-prefixed/autoload.php")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn leaves_vendor_autoload_alone_by_default() {
+    let project = with_include_autoloader("include-off", false);
+    let output = prefix(&project, &[]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        fs::read_to_string(project.join("vendor/autoload.php")).unwrap(),
+        COMPOSER_AUTOLOAD
+    );
+}
+
+#[test]
+fn a_dry_run_does_not_include_the_autoloader() {
+    let project = with_include_autoloader("include-dry", true);
+    let output = prefix(&project, &["--dry-run"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stderr(&output).contains("Would update vendor/autoload.php"));
+    assert_eq!(
+        fs::read_to_string(project.join("vendor/autoload.php")).unwrap(),
+        COMPOSER_AUTOLOAD
+    );
+}

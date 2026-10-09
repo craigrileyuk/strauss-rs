@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-mod analyse;
+pub(crate) mod analyse;
 mod builtins;
 mod model;
 

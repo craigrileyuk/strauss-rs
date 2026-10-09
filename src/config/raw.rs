@@ -37,6 +37,7 @@ pub(super) struct RawConfig {
     pub(super) exclude_git_files: Option<bool>,
     pub(super) include_modified_date: Option<bool>,
     pub(super) include_author: Option<bool>,
+    pub(super) include_autoloader: Option<bool>,
     pub(super) classmap_output: Option<bool>,
 }
 

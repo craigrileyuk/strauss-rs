@@ -14,6 +14,10 @@
 #   STRAUSS_RS_REPO      the GitHub repository (default: craigrileyuk/strauss-rs)
 #   STRAUSS_RS_BASE_URL  where releases are downloaded from (default: https://github.com/$STRAUSS_RS_REPO/releases)
 #   STRAUSS_RS_OFFLINE   set to 1 to never look for an update
+#   STRAUSS_RS_GITIGNORE set to 0 to leave .gitignore alone
+#
+# The files it downloads are added to a .gitignore in the directory the binary is
+# kept in (created if there isn't one), so they aren't committed. This script is.
 #
 # Without STRAUSS_RS_VERSION, the latest release is looked for once a day. If it
 # can't be reached, the binary already installed is used.
@@ -183,6 +187,30 @@ installed_tag() {
     return 0
 }
 
+# Adds what this script puts in $DIR to $DIR/.gitignore, if it isn't there yet.
+update_gitignore() {
+    [ "${STRAUSS_RS_GITIGNORE:-1}" = 0 ] && return 0
+    [ -d "$DIR" ] || return 0
+
+    ignore="$DIR/.gitignore"
+
+    for entry in "/$BINARY" "/.strauss-rs-checked" "/strauss.schema.json"; do
+        if [ -f "$ignore" ] && grep -qxF -- "$entry" "$ignore"; then
+            continue
+        fi
+
+        # A file that doesn't end in a newline would join the entry to its last line.
+        if [ -s "$ignore" ] && [ -n "$(tail -c 1 "$ignore")" ]; then
+            printf '\n' >>"$ignore"
+        fi
+
+        printf '%s\n' "$entry" >>"$ignore" || {
+            say "could not update $ignore"
+            return 0
+        }
+    done
+}
+
 checked_recently() {
     stamp="$DIR/.strauss-rs-checked"
     [ -f "$stamp" ] && [ -n "$(find "$stamp" -mmin "-$CHECK_EVERY_MINUTES" 2>/dev/null)" ]
@@ -213,6 +241,8 @@ main() {
         install_release "$wanted"
         say "installed $wanted in $DIR"
     fi
+
+    update_gitignore
 
     if [ "$#" -gt 0 ]; then
         exec "$DIR/$BINARY" "$@"

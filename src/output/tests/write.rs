@@ -461,3 +461,32 @@ fn the_files_of_the_project_come_first_with_include_root_autoload() {
 
     assert!(!read(&scratch, "vendor-prefixed/autoload.php").contains("helpers.php"));
 }
+
+#[test]
+fn without_optimize_autoloader_classes_not_in_the_classmap_are_found_by_psr4() {
+    let (scratch, _, report) = written_fixture(|config| config.optimize_autoloader = false);
+    let autoload = read(&scratch, "vendor-prefixed/autoload.php");
+
+    assert!(
+        report
+            .autoloader
+            .contains(&"vendor-prefixed/autoload.php".to_string())
+    );
+    assert!(autoload.contains("$strauss_psr4 = array("), "{autoload}");
+    assert!(
+        autoload.contains("'P\\\\V\\\\Acme\\\\Core\\\\' => array("),
+        "{autoload}"
+    );
+    assert!(
+        autoload.contains("__DIR__ . '/acme/core/src',"),
+        "{autoload}"
+    );
+    assert!(autoload.contains("is_file("), "{autoload}");
+}
+
+#[test]
+fn with_optimize_autoloader_there_is_no_psr4_fallback() {
+    let (scratch, _, _) = written_fixture(|_| {});
+
+    assert!(!read(&scratch, "vendor-prefixed/autoload.php").contains("psr4"));
+}

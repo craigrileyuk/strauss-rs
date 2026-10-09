@@ -182,6 +182,11 @@
             "type": "boolean",
             "default": true,
             "description": "Include the author in the header written to modified files."
+        },
+        "include_autoloader": {
+            "type": "boolean",
+            "default": false,
+            "description": "After prefixing, add a line to the vendor directory's `autoload.php` that loads the prefixed packages' autoloader, as the `include-autoloader` command does. Needs the autoloader to be written (`classmap_output`). Composer rewrites `vendor/autoload.php` on install and update, so run `prefix` after those."
         }
     },
     "definitions": {

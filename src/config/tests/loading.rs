@@ -25,6 +25,7 @@ fn needs_no_files() {
     assert!(config.exclude_git_files);
     assert!(config.include_modified_date);
     assert!(config.include_author);
+    assert!(!config.include_autoloader);
     assert!(config.classmap_output);
 }
 
