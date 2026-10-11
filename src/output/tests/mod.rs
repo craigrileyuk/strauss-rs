@@ -115,11 +115,12 @@ impl Pipeline {
     }
 
     pub fn write(&self, dry_run: bool) -> Report {
-        write(
-            &self.input(),
-            &Options::new(&self.config, dry_run, DATE.to_string()),
-        )
-        .unwrap()
+        let mut options = Options::new(&self.config, dry_run, DATE.to_string());
+
+        // Not the Composer of whoever runs the tests.
+        options.composer = None;
+
+        write(&self.input(), &options).unwrap()
     }
 }
 

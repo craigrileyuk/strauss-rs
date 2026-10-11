@@ -10,12 +10,15 @@
 mod autoload;
 mod call_sites;
 mod clean;
+mod composer;
 mod copy;
 mod error;
 mod header;
 mod include;
 
 // The module's API; the CLI uses some of it so far.
+#[allow(unused_imports)]
+pub use composer::composer_command;
 #[allow(unused_imports)]
 pub use error::OutputError;
 #[allow(unused_imports)]
@@ -52,6 +55,10 @@ pub struct Options {
     /// From the configuration; here so they can be overridden.
     pub include_modified_date: bool,
     pub include_author: bool,
+
+    /// The command that regenerates Composer's autoloader after packages are
+    /// deleted. `None` leaves that to the user.
+    pub composer: Option<String>,
 }
 
 impl Options {
@@ -61,6 +68,7 @@ impl Options {
             date,
             include_modified_date: config.include_modified_date,
             include_author: config.include_author,
+            composer: Some(composer_command()),
         }
     }
 }
@@ -84,6 +92,9 @@ pub struct Report {
 
     /// Files deleted from the vendor directory.
     pub deleted_files: usize,
+
+    /// Whether Composer's `installed.json` was changed to match the deletions.
+    pub composer_updated: bool,
 
     /// Packages deleted from the vendor directory.
     pub deleted_packages: Vec<String>,
@@ -122,6 +133,7 @@ pub fn write(input: &Input, options: &Options) -> Result<Report, OutputError> {
 
     report.deleted_files = deleted.files;
     report.deleted_packages = deleted.packages;
+    report.composer_updated = deleted.composer_updated;
     report.warnings.extend(deleted.warnings);
 
     Ok(report)
