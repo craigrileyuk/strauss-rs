@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="strauss-rs-logo-light.svg">
+    <img src="strauss-rs-logo.svg" alt="Strauss RS" width="150">
+  </picture>
+</p>
+
 # Strauss RS
 
 A laser-fast Rust take on [Strauss](https://github.com/BrianHenryIE/strauss): it prefixes the namespaces and global symbols of a Wordpress plugin or theme's Composer dependencies, so they can't clash with other plugins shipping the same libraries.
@@ -6,44 +13,54 @@ It's a single binary with no PHP required to run it.
 
 ## Getting started
 
-### 1. Download `install.sh` into your project
+### 1. Install the script
 
 From your plugin or theme's root folder (the one with `composer.json`):
 
 ```sh
 mkdir -p bin
 curl -fsSL -o bin/strauss-rs.sh https://raw.githubusercontent.com/craigrileyuk/strauss-rs/main/install.sh
+sh bin/strauss-rs.sh
 ```
 
-The script picks the right release for your OS and CPU (macOS, Linux glibc/musl, Windows via Git Bash), checks its SHA-256 checksum, and keeps the binary in `bin/` next to itself.
+The script downloads the right release for your OS and CPU, checks its checksum, and keeps the binary in `bin/` next to itself. It also keeps `bin/.gitignore` up to date so the download isn't committed. Commit `bin/strauss-rs.sh` and `bin/.gitignore`.
 
-### 2. Install and run it
-
-```sh
-sh bin/strauss-rs.sh prefix
-```
-
-The first run downloads the latest release, then runs `strauss-rs prefix`. Any arguments after the script name are passed to the binary. Running the script with no arguments only installs or updates.
-
-The script adds what it downloads (the binary, the schema and an update-check stamp) to a `bin/.gitignore`, creating it if needed and leaving existing entries alone. Commit `bin/strauss-rs.sh` and `bin/.gitignore`.
-
-### 3. Add a `strauss.json`
+### 2. Create a `strauss.json`
 
 Next to `composer.json`:
 
 ```json
 {
   "$schema": "./bin/strauss.schema.json",
-  "target_directory": "vendor-prefixed",
   "namespace_prefix": "Acme\\Plugin\\Vendor",
   "classmap_prefix": "Acme_Plugin_",
-  "packages": ["monolog/monolog"]
+  "include_autoloader": true
 }
 ```
 
-Everything is optional. Prefixes are inferred from `composer.json` when left out, and `packages` defaults to your `require` list. The schema, installed alongside the binary, gives editor completion for all options.
+Everything is optional. Prefixes are inferred from `composer.json` when left out, and every package in `require` is processed. The schema gives your editor completion for all options. `include_autoloader` makes Composer's `vendor/autoload.php` load the prefixed packages, so your plugin needs no extra `require`.
 
-### 4. Preview, then prefix
+Coming from Strauss PHP? Your options must be moved here from `composer.json`; see [Migrating from Strauss PHP](#migrating-from-strauss-php).
+
+### 3. Run it from Composer
+
+Add to your `composer.json`:
+
+```json
+{
+  "scripts": {
+    "prefix-namespaces": ["sh bin/strauss-rs.sh prefix"],
+    "post-install-cmd": ["@prefix-namespaces"],
+    "post-update-cmd": ["@prefix-namespaces"]
+  }
+}
+```
+
+Now `composer install` and `composer update` prefix your dependencies into `vendor-prefixed/` as their last step.
+
+## Advanced usage
+
+### Previewing changes
 
 ```sh
 sh bin/strauss-rs.sh diff             # show the changes as a diff
@@ -51,7 +68,7 @@ sh bin/strauss-rs.sh prefix --dry-run # work out what would be written, write no
 sh bin/strauss-rs.sh prefix           # copy to target_directory and write the autoloader
 ```
 
-Then load the generated autoloader from your plugin instead of (or after) Composer's.
+Any arguments after the script name are passed to the binary. Running the script with no arguments only installs or updates. `STRAUSS_RS_VERSION` pins a release; see [Installer settings](#installer-settings).
 
 ### Migrating from Strauss PHP
 
@@ -87,9 +104,9 @@ Then delete `extra.strauss` from `composer.json` so there is one source of truth
 - Unknown keys are an error, so a typo or an unsupported option is reported rather than ignored.
 - Mozart's legacy keys (`dep_directory`, `dep_namespace`, `exclude_packages` and so on) and the `extra.mozart` fallback are not supported. Use the current option names.
 - If you leave out `classmap_prefix`, the one inferred from your package name ends in an underscore (`Acme_My_Plugin_`). Strauss PHP leaves the underscore off. Set it explicitly if you need your existing class names to stay the same.
-- Your Composer scripts should call `strauss-rs` (see [Run it from Composer](#run-it-from-composer)) instead of `vendor/bin/strauss`.
+- Your Composer scripts should call `strauss-rs` (see [Run it from Composer](#3-run-it-from-composer)) instead of `vendor/bin/strauss`.
 
-## Updating your own code
+### Updating your own code
 
 Your plugin's own files refer to the packages too. Set `update_call_sites` and `prefix` rewrites them in place, so `use Acme\Core\Client;` becomes `use Acme\Vendor\Acme\Core\Client;`:
 
@@ -106,13 +123,13 @@ Your plugin's own files refer to the packages too. Set `update_call_sites` and `
 
 This changes your source files, so commit first and look at `diff --updateCallSites` before running `prefix`. `prefix --dry-run` reports how many files would change without writing them.
 
-## The autoloader
+### The autoloader
 
 `prefix` writes `autoload.php` and `autoload-classmap.php` into the target directory. By default (`optimize_autoloader: true`) the autoloader is classmap-authoritative: every class is listed under its new name, so loading one never searches the disk.
 
 Set `"optimize_autoloader": false` to also fall back to each package's PSR-4 directories, using the renamed namespaces, for classes that aren't in the classmap, such as files added after `prefix` ran. Packages that use `psr-0` are only loaded through the classmap, and you get a warning if there are any.
 
-## Deleting the originals
+### Deleting the originals
 
 `delete_vendor_packages` (and `delete_vendor_files`) remove the original packages from `vendor/` once they've been copied and prefixed, so you don't ship two copies. Composer's own autoloader still lists those packages and would fatally error on their missing `files`, so after deleting, `prefix`:
 
@@ -121,21 +138,9 @@ Set `"optimize_autoloader": false` to also fall back to each package's PSR-4 dir
 
 If `composer` isn't on your `PATH`, set `STRAUSS_RS_COMPOSER` to the command to run. If it can't be run, `prefix` warns and tells you what to do by hand. Nothing is deleted in a `--dry-run`.
 
-Because the packages are gone from `installed.json`, the next `prefix` needs them back: run `composer install` first. Hooking `prefix` onto Composer's `post-install-cmd` and `post-update-cmd` (see below) does this for you. `--no-scripts` stops the regeneration from triggering those hooks again.
+Because the packages are gone from `installed.json`, the next `prefix` needs them back: run `composer install` first. Hooking `prefix` onto Composer's `post-install-cmd` and `post-update-cmd` (see [step 3](#3-run-it-from-composer)) does this for you. `--no-scripts` stops the regeneration from triggering those hooks again.
 
-## Run it from Composer
-
-```json
-{
-  "scripts": {
-    "prefix-namespaces": ["sh bin/strauss-rs.sh prefix"],
-    "post-install-cmd": ["@prefix-namespaces"],
-    "post-update-cmd": ["@prefix-namespaces"]
-  }
-}
-```
-
-## Commands
+### Commands
 
 | Command    | What it does                                                          |
 | ---------- | --------------------------------------------------------------------- |
@@ -150,7 +155,7 @@ Because the packages are gone from `installed.json`, the next `prefix` needs the
 
 Useful options: `-C, --project-dir <DIR>` to run against another folder, `-q, --quiet`, `--parallel[=auto|false|N]`, `--updateCallSites[=true|false|PATHS]` on `prefix` and `diff`, and `--json` on `prefix`. Run `strauss-rs <command> --help` for the rest.
 
-## Installer settings
+### Installer settings
 
 Set these as environment variables when running the script:
 
