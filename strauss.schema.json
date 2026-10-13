@@ -166,7 +166,8 @@
         "delete_vendor_files": {
             "type": "boolean",
             "default": false,
-            "description": "Delete the files copied from the packages' vendor directories after processing."
+            "deprecated": true,
+            "description": "Deprecated: use `delete_vendor_packages`. Delete the files copied from the packages' vendor directories after processing, leaving any files that were not copied."
         },
         "exclude_git_files": {
             "type": "boolean",

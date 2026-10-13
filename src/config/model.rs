@@ -104,7 +104,8 @@ pub struct Config {
     pub delete_vendor_packages: bool,
 
     /// `delete_vendor_files`: delete the copied files from the packages'
-    /// vendor directories after processing. Default `false`.
+    /// vendor directories after processing. Default `false`. Deprecated in
+    /// favour of `delete_vendor_packages`, but still honoured.
     pub delete_vendor_files: bool,
 
     /// `exclude_git_files`: skip files that wouldn't be in the package's

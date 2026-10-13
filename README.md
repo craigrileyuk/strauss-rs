@@ -131,10 +131,12 @@ Set `"optimize_autoloader": false` to also fall back to each package's PSR-4 dir
 
 ### Deleting the originals
 
-`delete_vendor_packages` (and `delete_vendor_files`) remove the original packages from `vendor/` once they've been copied and prefixed, so you don't ship two copies. Composer's own autoloader still lists those packages and would fatally error on their missing `files`, so after deleting, `prefix`:
+`delete_vendor_packages` removes the original packages from `vendor/` once they've been copied and prefixed, so you don't ship two copies. Composer's own autoloader still lists those packages and would fatally error on their missing `files`, so after deleting, `prefix`:
 
 1. removes the deleted packages from `vendor/composer/installed.json`, and
 2. runs `composer dump-autoload --no-scripts` to regenerate Composer's autoloader from what is left.
+
+`delete_vendor_files` is deprecated and kept only so existing Strauss configs still load. It deletes just the files that were copied, where `delete_vendor_packages` removes the whole package directory when everything in it was copied, so prefer `delete_vendor_packages`. Composer is updated the same way for either.
 
 If `composer` isn't on your `PATH`, set `STRAUSS_RS_COMPOSER` to the command to run. If it can't be run, `prefix` warns and tells you what to do by hand. Nothing is deleted in a `--dry-run`.
 
