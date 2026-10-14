@@ -19,7 +19,7 @@ From your plugin or theme's root folder (the one with `composer.json`):
 
 ```sh
 mkdir -p bin
-curl -fsSL -o bin/strauss-rs.sh https://raw.githubusercontent.com/craigrileyuk/strauss-rs/main/install.sh
+curl -fsSL -o bin/strauss-rs.sh https://raw.githubusercontent.com/evo-mark/strauss-rs/main/install.sh
 sh bin/strauss-rs.sh
 ```
 
