@@ -9,12 +9,17 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 /// The presets that can be named in `exclude_presets`.
-pub const PRESET_NAMES: &[&str] = &["wordpress"];
+pub const PRESET_NAMES: &[&str] = &["wordpress", "woocommerce"];
 
-/// `wordpress.txt`: one symbol per line, `c` for a class, interface or trait,
+/// The presets on when `exclude_presets` isn't set. WooCommerce is only for
+/// plugins that extend it, so it is opt-in.
+pub const DEFAULT_PRESETS: &[&str] = &["wordpress"];
+
+/// `wordpress.txt` and `woocommerce.txt`: one symbol per line, `c` for a class, interface or trait,
 /// `f` for a function and `k` for a constant. `#` starts a comment. Generated
-/// by `scripts/generate-wordpress-preset.sh`.
+/// by `scripts/generate-presets.sh`.
 const WORDPRESS: &str = include_str!("presets/wordpress.txt");
+const WOOCOMMERCE: &str = include_str!("presets/woocommerce.txt");
 
 #[derive(Debug, Default)]
 pub struct PresetSymbols {
@@ -30,10 +35,25 @@ impl PresetSymbols {
     /// such preset.
     pub fn get(preset: &str) -> Option<&'static PresetSymbols> {
         static WORDPRESS_SYMBOLS: OnceLock<PresetSymbols> = OnceLock::new();
+        static WOOCOMMERCE_SYMBOLS: OnceLock<PresetSymbols> = OnceLock::new();
 
         match preset {
             "wordpress" => Some(WORDPRESS_SYMBOLS.get_or_init(|| PresetSymbols::parse(WORDPRESS))),
+            "woocommerce" => {
+                Some(WOOCOMMERCE_SYMBOLS.get_or_init(|| PresetSymbols::parse(WOOCOMMERCE)))
+            }
             _ => None,
+        }
+    }
+
+    /// What the platform is called in a sentence: `WooCommerce`, not
+    /// `woocommerce`.
+    pub fn title(preset: &str) -> &str {
+        match preset {
+            "php" => "PHP",
+            "wordpress" => "Wordpress",
+            "woocommerce" => "WooCommerce",
+            other => other,
         }
     }
 

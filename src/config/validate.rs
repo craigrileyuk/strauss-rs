@@ -7,7 +7,7 @@ use crate::config::error::{ConfigError, invalid};
 use crate::config::model::{Exclusions, Parallel, UpdateCallSites};
 use crate::config::raw::RawExclusions;
 use crate::php_pattern::PhpPattern;
-use crate::symbols::presets::PRESET_NAMES;
+use crate::symbols::presets::{DEFAULT_PRESETS, PRESET_NAMES};
 
 /// Options whose value is a JSON object.
 pub(super) const OBJECT_OPTIONS: &[&str] = &[
@@ -149,7 +149,10 @@ pub(super) fn validate_name_prefix(key: &str, prefix: &str) -> Result<String, Co
 /// `exclude_presets` names must be known presets. Default: all of them.
 pub(super) fn resolve_presets(raw: Option<Vec<String>>) -> Result<Vec<String>, ConfigError> {
     let Some(raw) = raw else {
-        return Ok(PRESET_NAMES.iter().map(|name| name.to_string()).collect());
+        return Ok(DEFAULT_PRESETS
+            .iter()
+            .map(|name| name.to_string())
+            .collect());
     };
 
     let mut presets: Vec<String> = Vec::new();

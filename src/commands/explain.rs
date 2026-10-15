@@ -131,17 +131,7 @@ fn provided_match(
     provided_by: &str,
     declared_in: Option<(&str, &str)>,
 ) -> Match {
-    let provider = if provided_by == "php" {
-        "PHP".to_string()
-    } else {
-        // Presets are named in lower case; Wordpress is not.
-        let mut chars = provided_by.chars();
-
-        chars
-            .next()
-            .map(|first| first.to_uppercase().chain(chars).collect())
-            .unwrap_or_default()
-    };
+    let provider = PresetSymbols::title(provided_by);
 
     let (packages, files, reason) = match declared_in {
         Some((package, file)) => (

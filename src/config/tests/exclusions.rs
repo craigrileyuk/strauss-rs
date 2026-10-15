@@ -96,5 +96,18 @@ fn rejects_an_unknown_preset() {
 
     assert!(message.contains("`exclude_presets[1]`"), "{message}");
     assert!(message.contains("`drupal` is not a preset"), "{message}");
-    assert!(message.contains("wordpress"), "{message}");
+    assert!(message.contains("wordpress, woocommerce"), "{message}");
+}
+
+#[test]
+fn the_woocommerce_preset_is_opt_in() {
+    assert_eq!(strauss_only("{}").exclude_presets, ["wordpress"]);
+    assert_eq!(
+        strauss_only(r#"{"exclude_presets": ["wordpress", "woocommerce"]}"#).exclude_presets,
+        ["wordpress", "woocommerce"]
+    );
+    assert_eq!(
+        strauss_only(r#"{"exclude_presets": ["WooCommerce"]}"#).exclude_presets,
+        ["woocommerce"]
+    );
 }

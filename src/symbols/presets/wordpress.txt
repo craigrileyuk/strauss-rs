@@ -1,12 +1,12 @@
 # Wordpress core's global classes, interfaces, traits, functions and constants.
 #
 # Symbols with these names are never renamed when the `wordpress` preset is on
-# (`exclude_presets`): a library's shim for them would no longer be what
-# Wordpress expects.
+# (`exclude_presets`): a library's copy of them would no longer be what
+# the rest of the platform expects.
 #
 # Generated from php-stubs/wordpress-stubs v7.1.2 by
-# scripts/generate-wordpress-preset.sh. Don't edit by hand, except for the
-# constants, which the stubs don't declare: those come from
+# scripts/generate-presets.sh. Don't edit by hand, except for the constants,
+# which the stubs mostly don't declare: those come from
 # scripts/wordpress-constants.txt.
 
 c AMFReader

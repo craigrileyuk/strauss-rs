@@ -131,3 +131,62 @@ fn php_built_ins_are_attributed_to_php() {
             .all(|symbol| symbol.provided_by == "php")
     );
 }
+
+#[test]
+fn woocommerce_symbols_are_recognised() {
+    let woocommerce = PresetSymbols::get("woocommerce").unwrap();
+
+    assert!(woocommerce.is_class_like("WooCommerce"));
+    assert!(woocommerce.is_class_like("wc_order"));
+    assert!(woocommerce.is_function("wc_get_order"));
+    assert!(woocommerce.is_constant("WC_ABSPATH"));
+    assert!(!woocommerce.is_constant("wc_abspath"));
+    assert!(!woocommerce.is_class_like("Acme\\WC_Order"));
+}
+
+#[test]
+fn each_preset_only_has_its_own_symbols() {
+    let wordpress = PresetSymbols::get("wordpress").unwrap();
+    let woocommerce = PresetSymbols::get("woocommerce").unwrap();
+
+    assert!(!wordpress.is_class_like("WC_Order"));
+    assert!(!wordpress.is_function("wc_get_order"));
+    // WooCommerce's stubs depend on Wordpress', but the lists don't mix.
+    assert!(!woocommerce.is_class_like("WP_Error"));
+    assert!(!woocommerce.is_function("add_action"));
+}
+
+#[test]
+fn leaves_out_what_woocommerce_provides_when_it_is_on() {
+    let table = scan_presets(&["wordpress", "woocommerce"]);
+
+    assert_eq!(
+        provided(&table, SymbolKind::Class, "WC_Order").as_deref(),
+        Some("woocommerce")
+    );
+    assert_eq!(
+        provided(&table, SymbolKind::Function, "WC_GET_ORDER").as_deref(),
+        Some("woocommerce")
+    );
+    assert_eq!(
+        provided(&table, SymbolKind::Constant, "WC_ABSPATH").as_deref(),
+        Some("woocommerce")
+    );
+    assert!(table.get(SymbolKind::Class, "WC_Order").is_none());
+}
+
+#[test]
+fn woocommerce_symbols_are_ordinary_unless_the_preset_is_on() {
+    let table = scan_presets(&["wordpress"]);
+
+    assert!(table.get(SymbolKind::Class, "WC_Order").is_some());
+    assert!(table.get(SymbolKind::Constant, "WC_ABSPATH").is_some());
+    assert_eq!(provided(&table, SymbolKind::Class, "WC_Order"), None);
+}
+
+#[test]
+fn presets_have_titles() {
+    assert_eq!(PresetSymbols::title("woocommerce"), "WooCommerce");
+    assert_eq!(PresetSymbols::title("wordpress"), "Wordpress");
+    assert_eq!(PresetSymbols::title("php"), "PHP");
+}

@@ -236,20 +236,25 @@ Because the packages are gone from `installed.json`, the next `prefix` needs the
 
 ### Presets
 
-Some libraries declare symbols that the platform they run on already has, usually in a shim guarded by `function_exists()` or `class_exists()`. If that shim were renamed, Wordpress would never see it and the shim would stop doing its job. `exclude_presets` lists sets of symbols that are never renamed:
+Some libraries declare symbols that the platform they run on already has, usually in a shim guarded by `function_exists()` or `class_exists()`. If that shim were renamed, the platform would never see it and the shim would stop doing its job. `exclude_presets` lists sets of symbols that are never renamed:
 
 ```json
 {
-	"exclude_presets": ["wordpress"]
+  "exclude_presets": ["wordpress", "woocommerce"]
 }
 ```
 
-- `wordpress` is on by default. It covers Wordpress core's global classes (`WP_Error`, `wpdb`), functions (`add_action`, `wp_json_encode`) and constants (`ABSPATH`, `WP_DEBUG`). Namespaced symbols are not included, so a bundled copy of something like `WpOrg\Requests` is still prefixed.
-- Set `"exclude_presets": []` to rename those symbols like any others.
-- PHP's own classes and functions are always left alone, whatever you set here.
-- `strauss-rs symbols` lists what was left alone under `built_ins`, with `provided_by` set to `php` or the preset's name.
+| Preset        | Covers                                                                                                   | On by default |
+| ------------- | -------------------------------------------------------------------------------------------------------- | ------------- |
+| `wordpress`   | Wordpress core's global classes (`WP_Error`, `wpdb`), functions (`add_action`) and constants (`ABSPATH`) | Yes           |
+| `woocommerce` | WooCommerce's global classes (`WC_Order`), functions (`wc_get_order`) and constants (`WC_ABSPATH`)        | No            |
 
-The class and function lists are generated from [php-stubs/wordpress-stubs](https://github.com/php-stubs/wordpress-stubs) with `scripts/generate-wordpress-preset.sh`. The stubs don't declare constants, so those come from `scripts/wordpress-constants.txt`.
+- Setting `exclude_presets` replaces the default, so list `wordpress` too if you want it alongside `woocommerce`. `"exclude_presets": []` renames those symbols like any others.
+- Namespaced symbols are not included, so a bundled copy of something like `WpOrg\Requests` or `Automattic\WooCommerce\Client` is still prefixed.
+- PHP's own classes and functions are always left alone, whatever you set here.
+- `strauss-rs symbols` lists what was left alone under `built_ins`, with `provided_by` set to `php` or the preset's name, and `strauss-rs explain` says why a particular symbol was left alone.
+
+The class and function lists are generated from [php-stubs/wordpress-stubs](https://github.com/php-stubs/wordpress-stubs) and [php-stubs/woocommerce-stubs](https://github.com/php-stubs/woocommerce-stubs) with `scripts/generate-presets.sh`. The stubs mostly don't declare constants, so those come from `scripts/wordpress-constants.txt` and `scripts/woocommerce-constants.txt`.
 
 ### Commands
 
