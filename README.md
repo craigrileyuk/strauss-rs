@@ -1,11 +1,9 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="strauss-rs-logo-light.svg">
-    <img src="strauss-rs-logo.svg" alt="Strauss RS" width="150">
+    <img src="strauss-rs-logo.svg" alt="Strauss RS" width="300">
   </picture>
 </p>
-
-# Strauss RS
 
 A laser-fast Rust take on [Strauss](https://github.com/BrianHenryIE/strauss): it prefixes the namespaces and global symbols of a Wordpress plugin or theme's Composer dependencies, so they can't clash with other plugins shipping the same libraries.
 
