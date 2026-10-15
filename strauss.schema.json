@@ -136,6 +136,15 @@
                 }
             }
         },
+        "exclude_presets": {
+            "description": "Sets of symbols that something other than PHP provides, which are never renamed. `wordpress` is Wordpress core's global classes, functions and constants, so a library's shim for them is left alone. Set to `[]` to rename them like any other symbol.",
+            "type": "array",
+            "uniqueItems": true,
+            "default": ["wordpress"],
+            "items": {
+                "enum": ["wordpress"]
+            }
+        },
         "exclude_from_string_rename": {
             "description": "Symbols that are renamed where used in code, but left unchanged where the name appears inside a string.",
             "type": "object",

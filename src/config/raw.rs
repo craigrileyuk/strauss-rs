@@ -30,6 +30,7 @@ pub(super) struct RawConfig {
     pub(super) exclude_from_prefix: Option<RawExclusions>,
     pub(super) exclude_files_from_update: Option<RawExclusions>,
     pub(super) exclude_constants: Option<RawConstantExclusions>,
+    pub(super) exclude_presets: Option<Vec<String>>,
     pub(super) exclude_from_string_rename: Option<RawStringRenameExclusions>,
     pub(super) namespace_replacement_patterns: Option<Ordered<String>>,
     pub(super) delete_vendor_packages: Option<bool>,

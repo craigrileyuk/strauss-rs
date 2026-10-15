@@ -67,3 +67,34 @@ fn rejects_invalid_exclusions() {
             .contains("`exclude_from_copy` must be an object")
     );
 }
+
+#[test]
+fn the_wordpress_preset_is_excluded_by_default() {
+    assert_eq!(strauss_only("{}").exclude_presets, ["wordpress"]);
+}
+
+#[test]
+fn presets_can_be_turned_off() {
+    assert!(
+        strauss_only(r#"{"exclude_presets": []}"#)
+            .exclude_presets
+            .is_empty()
+    );
+}
+
+#[test]
+fn preset_names_are_normalised_and_deduplicated() {
+    assert_eq!(
+        strauss_only(r#"{"exclude_presets": [" WordPress ", "wordpress"]}"#).exclude_presets,
+        ["wordpress"]
+    );
+}
+
+#[test]
+fn rejects_an_unknown_preset() {
+    let message = error(r#"{"exclude_presets": ["wordpress", "drupal"]}"#);
+
+    assert!(message.contains("`exclude_presets[1]`"), "{message}");
+    assert!(message.contains("`drupal` is not a preset"), "{message}");
+    assert!(message.contains("wordpress"), "{message}");
+}

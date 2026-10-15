@@ -1,0 +1,6 @@
+{
+    "name": "acme/presets-app",
+    "require": {
+        "acme/shim": "*"
+    }
+}

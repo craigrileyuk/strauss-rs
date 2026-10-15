@@ -10,12 +10,15 @@
 pub(crate) mod analyse;
 mod builtins;
 mod model;
+pub(crate) mod presets;
 
 // The module's API; the CLI uses some of it so far.
 #[allow(unused_imports)]
 pub use builtins::BuiltIns;
 #[allow(unused_imports)]
 pub use model::*;
+#[allow(unused_imports)]
+pub use presets::PresetSymbols;
 
 use crate::analyser::{self, FileAnalysis};
 use crate::config::Config;
@@ -41,6 +44,12 @@ pub fn scan(config: &Config, files: &[PackageFile]) -> SymbolTable {
 
     let mut table = SymbolTable::default();
 
+    let presets: Vec<(&str, &PresetSymbols)> = config
+        .exclude_presets
+        .iter()
+        .filter_map(|name| Some((name.as_str(), PresetSymbols::get(name)?)))
+        .collect();
+
     for (file, analysis) in php_files.into_iter().zip(analyses) {
         let (analysis, lossy) = match analysis {
             Ok(analysed) => (Some(analysed.analysis), analysed.lossy),
@@ -65,7 +74,7 @@ pub fn scan(config: &Config, files: &[PackageFile]) -> SymbolTable {
         }
 
         if let Some(analysis) = &analysis {
-            record(&mut table, file, analysis);
+            record(&mut table, file, analysis, &presets);
         }
 
         table.files.push(ScannedFile {
@@ -81,7 +90,12 @@ pub fn scan(config: &Config, files: &[PackageFile]) -> SymbolTable {
 }
 
 /// Adds the symbols a file declares to the table.
-fn record(table: &mut SymbolTable, file: &PackageFile, analysis: &FileAnalysis) {
+fn record(
+    table: &mut SymbolTable,
+    file: &PackageFile,
+    analysis: &FileAnalysis,
+    presets: &[(&str, &PresetSymbols)],
+) {
     let built_ins = BuiltIns::get();
 
     for namespace in &analysis.namespaces {
@@ -100,18 +114,33 @@ fn record(table: &mut SymbolTable, file: &PackageFile, analysis: &FileAnalysis) 
                 analyser::SymbolKind::Constant => SymbolKind::Constant,
             };
 
-            let is_built_in = match kind {
+            let is_php_built_in = match kind {
                 kind if kind.is_class_like() => built_ins.is_class_like(&declared.name),
                 SymbolKind::Function => built_ins.is_function(&declared.name),
                 _ => false,
             };
 
-            if is_built_in {
+            let provided_by = if is_php_built_in {
+                Some("php")
+            } else {
+                presets
+                    .iter()
+                    .find(|(_, preset)| match kind {
+                        kind if kind.is_class_like() => preset.is_class_like(&declared.name),
+                        SymbolKind::Function => preset.is_function(&declared.name),
+                        SymbolKind::Constant => preset.is_constant(&declared.name),
+                        _ => false,
+                    })
+                    .map(|(name, _)| *name)
+            };
+
+            if let Some(provided_by) = provided_by {
                 table.built_ins.push(BuiltInSymbol {
                     kind,
                     name: declared.name.clone(),
                     package: file.package.clone(),
                     file: file.vendor_relative_path.clone(),
+                    provided_by: provided_by.to_string(),
                 });
 
                 continue;

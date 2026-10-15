@@ -186,3 +186,32 @@ fn works_on_the_other_fixture_too() {
         serde_json::json!(["PluginA"])
     );
 }
+
+#[test]
+fn lists_what_wordpress_provides_separately() {
+    let report = report(&symbols("test/presets-fixture", &[]));
+
+    let mut built_ins: Vec<(&str, &str, &str)> = report["built_ins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|symbol| {
+            (
+                symbol["kind"].as_str().unwrap(),
+                symbol["name"].as_str().unwrap(),
+                symbol["provided_by"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    built_ins.sort();
+
+    assert_eq!(
+        built_ins,
+        [
+            ("class", "WP_Error", "wordpress"),
+            ("constant", "ABSPATH", "wordpress"),
+            ("constant", "WP_DEBUG", "wordpress"),
+            ("function", "WP_JSON_ENCODE", "wordpress"),
+        ]
+    );
+}

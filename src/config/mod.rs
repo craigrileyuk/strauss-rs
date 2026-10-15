@@ -32,8 +32,8 @@ use crate::config::infer::{autoloads_directory, infer_classmap_prefix, infer_nam
 use crate::config::raw::{RawConfig, RawExclusions};
 use crate::config::validate::{
     check_shape, is_identifier, normalise_target_directory, require_non_empty, resolve_exclusions,
-    resolve_functions_prefix, resolve_parallel, resolve_update_call_sites, validate_name_prefix,
-    validate_namespace_prefix,
+    resolve_functions_prefix, resolve_parallel, resolve_presets, resolve_update_call_sites,
+    validate_name_prefix, validate_namespace_prefix,
 };
 use crate::php_pattern::{PhpPattern, Replacement};
 
@@ -179,6 +179,8 @@ impl Config {
             }
         }
 
+        let exclude_presets = resolve_presets(raw.exclude_presets)?;
+
         let exclude_from_string_rename = raw.exclude_from_string_rename.unwrap_or_default();
 
         for (index, function) in exclude_from_string_rename.functions.iter().enumerate() {
@@ -233,6 +235,7 @@ impl Config {
                 )?,
                 constants: exclude_constants.constants,
             },
+            exclude_presets,
             exclude_from_string_rename: StringRenameExclusions {
                 functions: exclude_from_string_rename.functions,
             },

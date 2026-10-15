@@ -54,6 +54,7 @@ fn reads_the_readme_example() {
                 "exclude_from_copy": {"packages": [], "namespaces": [], "file_patterns": []},
                 "exclude_from_prefix": {"packages": [], "namespaces": [], "file_patterns": []},
                 "exclude_constants": {"packages": [], "namespaces": [], "file_patterns": [], "constants": []},
+                "exclude_presets": ["wordpress"],
                 "exclude_from_string_rename": {"functions": []},
                 "namespace_replacement_patterns": {},
                 "delete_vendor_packages": false,

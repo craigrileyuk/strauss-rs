@@ -7,6 +7,7 @@ use crate::config::error::{ConfigError, invalid};
 use crate::config::model::{Exclusions, Parallel, UpdateCallSites};
 use crate::config::raw::RawExclusions;
 use crate::php_pattern::PhpPattern;
+use crate::symbols::presets::PRESET_NAMES;
 
 /// Options whose value is a JSON object.
 pub(super) const OBJECT_OPTIONS: &[&str] = &[
@@ -143,6 +144,35 @@ pub(super) fn validate_name_prefix(key: &str, prefix: &str) -> Result<String, Co
     }
 
     Ok(prefix.to_string())
+}
+
+/// `exclude_presets` names must be known presets. Default: all of them.
+pub(super) fn resolve_presets(raw: Option<Vec<String>>) -> Result<Vec<String>, ConfigError> {
+    let Some(raw) = raw else {
+        return Ok(PRESET_NAMES.iter().map(|name| name.to_string()).collect());
+    };
+
+    let mut presets: Vec<String> = Vec::new();
+
+    for (index, preset) in raw.iter().enumerate() {
+        let name = preset.trim().to_ascii_lowercase();
+
+        if !PRESET_NAMES.contains(&name.as_str()) {
+            return Err(invalid(
+                format!("exclude_presets[{index}]"),
+                format!(
+                    "`{preset}` is not a preset; the presets are {}",
+                    PRESET_NAMES.join(", ")
+                ),
+            ));
+        }
+
+        if !presets.contains(&name) {
+            presets.push(name);
+        }
+    }
+
+    Ok(presets)
 }
 
 pub(super) fn resolve_exclusions(key: &str, raw: RawExclusions) -> Result<Exclusions, ConfigError> {

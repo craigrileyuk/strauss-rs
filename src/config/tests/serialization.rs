@@ -54,6 +54,7 @@ fn every_option_round_trips() {
             "exclude_from_prefix": {"packages": ["p/q"]},
             "exclude_files_from_update": {"namespaces": ["Q\\R"]},
             "exclude_constants": {"packages": ["k/l"], "constants": ["ABSPATH", "WP_PLUGIN_DIR"]},
+            "exclude_presets": ["wordpress"],
             "exclude_from_string_rename": {"functions": ["value"]},
             "namespace_replacement_patterns": {
                 "Zebra": "First",

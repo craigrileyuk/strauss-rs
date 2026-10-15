@@ -1,0 +1,5 @@
+{
+    "packages": [
+        {"name": "acme/shim", "version": "1.0.0", "install-path": "../acme/shim"}
+    ]
+}

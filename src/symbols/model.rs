@@ -132,13 +132,16 @@ pub struct ScannedFile {
     pub lossy: bool,
 }
 
-/// A symbol left out because PHP itself provides it.
+/// A symbol left out because PHP itself, or a preset in `exclude_presets`,
+/// provides it.
 #[derive(Debug, Serialize)]
 pub struct BuiltInSymbol {
     pub kind: SymbolKind,
     pub name: String,
     pub package: String,
     pub file: String,
+    /// `php`, or the name of the preset: `wordpress`.
+    pub provided_by: String,
 }
 
 /// A file that couldn't be analysed. Symbols in it are missing from the
@@ -157,7 +160,8 @@ pub struct SymbolTable {
 
     pub files: Vec<ScannedFile>,
 
-    /// PHP's own symbols that packages declare too, which are left alone.
+    /// PHP's own symbols, and those of the `exclude_presets`, that packages
+    /// declare too, which are left alone.
     pub built_ins: Vec<BuiltInSymbol>,
 
     pub warnings: Vec<ScanWarning>,
@@ -240,7 +244,8 @@ impl SymbolTable {
 pub struct SymbolReport<'a> {
     pub packages: BTreeMap<String, PackageSymbols>,
 
-    /// PHP's own symbols that packages declare too, which are left alone.
+    /// PHP's own symbols, and those of the `exclude_presets`, that packages
+    /// declare too, which are left alone.
     pub built_ins: &'a [BuiltInSymbol],
 
     pub warnings: &'a [ScanWarning],

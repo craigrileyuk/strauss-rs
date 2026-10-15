@@ -24,6 +24,7 @@ Strauss-RS is a single binary with no PHP or other dependencies required to run 
   - [Updating your own code](#updating-your-own-code)
   - [The autoloader](#the-autoloader)
   - [Deleting the originals](#deleting-the-originals)
+  - [Presets](#presets)
   - [Commands](#commands)
   - [Installer settings](#installer-settings)
 
@@ -189,6 +190,23 @@ Set `"optimize_autoloader": false` to also fall back to each package's PSR-4 dir
 If `composer` isn't on your `PATH`, set `STRAUSS_RS_COMPOSER` to the command to run. If it can't be run, `prefix` warns and tells you what to do by hand. Nothing is deleted in a `--dry-run`.
 
 Because the packages are gone from `installed.json`, the next `prefix` needs them back: run `composer install` first. Hooking `prefix` onto Composer's `post-install-cmd` and `post-update-cmd` (see [step 3](#3-run-it-from-composer)) does this for you. `--no-scripts` stops the regeneration from triggering those hooks again.
+
+### Presets
+
+Some libraries declare symbols that the platform they run on already has, usually in a shim guarded by `function_exists()` or `class_exists()`. If that shim were renamed, Wordpress would never see it and the shim would stop doing its job. `exclude_presets` lists sets of symbols that are never renamed:
+
+```json
+{
+  "exclude_presets": ["wordpress"]
+}
+```
+
+- `wordpress` is on by default. It covers Wordpress core's global classes (`WP_Error`, `wpdb`), functions (`add_action`, `wp_json_encode`) and constants (`ABSPATH`, `WP_DEBUG`). Namespaced symbols are not included, so a bundled copy of something like `WpOrg\Requests` is still prefixed.
+- Set `"exclude_presets": []` to rename those symbols like any others.
+- PHP's own classes and functions are always left alone, whatever you set here.
+- `strauss-rs symbols` lists what was left alone under `built_ins`, with `provided_by` set to `php` or the preset's name.
+
+The class and function lists are generated from [php-stubs/wordpress-stubs](https://github.com/php-stubs/wordpress-stubs) with `scripts/generate-wordpress-preset.sh`. The stubs don't declare constants, so those come from `scripts/wordpress-constants.txt`.
 
 ### Commands
 

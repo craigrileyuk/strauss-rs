@@ -12,6 +12,7 @@ use crate::packages::{enumerate_files, enumerate_packages};
 
 mod builtins;
 mod parallel;
+mod presets;
 mod table;
 
 pub(super) fn fixture_dir() -> PathBuf {

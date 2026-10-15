@@ -90,6 +90,10 @@ pub struct Config {
     /// `exclude_constants`: like `exclude_from_prefix`, for constants only.
     pub exclude_constants: ConstantExclusions,
 
+    /// `exclude_presets`: sets of symbols that something other than PHP
+    /// provides, which are never renamed. Default `["wordpress"]`.
+    pub exclude_presets: Vec<String>,
+
     /// `exclude_from_string_rename`: symbols that are renamed in code but left
     /// alone inside strings.
     pub exclude_from_string_rename: StringRenameExclusions,

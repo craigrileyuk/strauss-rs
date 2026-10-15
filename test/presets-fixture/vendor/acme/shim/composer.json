@@ -1,0 +1,4 @@
+{
+    "name": "acme/shim",
+    "autoload": {"files": ["shim.php"]}
+}
