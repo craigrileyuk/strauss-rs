@@ -1,6 +1,6 @@
 # Strauss RS
 
-A fast Rust take on [Strauss](https://github.com/BrianHenryIE/strauss): it prefixes the namespaces and global symbols of a WordPress plugin or theme's Composer dependencies, so they can't clash with other plugins shipping the same libraries.
+A laser-fast Rust take on [Strauss](https://github.com/BrianHenryIE/strauss): it prefixes the namespaces and global symbols of a Wordpress plugin or theme's Composer dependencies, so they can't clash with other plugins shipping the same libraries.
 
 It's a single binary with no PHP required to run it.
 
