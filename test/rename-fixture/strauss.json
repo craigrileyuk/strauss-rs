@@ -1,0 +1,25 @@
+{
+    "namespace_prefix": "Prefixed\\Vendor",
+    "classmap_prefix": "Prefixed_",
+    "constant_prefix": "PFX_",
+    "functions_prefix": "pfx_",
+    "exclude_from_prefix": {
+        "packages": ["acme/keep"],
+        "namespaces": ["Acme\\Psr4\\Skip"],
+        "file_patterns": ["~/Legacy/~"]
+    },
+    "exclude_constants": {
+        "constants": ["ACME_KEEP_CONST"]
+    },
+    "exclude_from_copy": {
+        "packages": ["acme/not-copied"],
+        "namespaces": ["Acme\\Psr4\\CopyExcluded"]
+    },
+    "exclude_from_string_rename": {
+        "functions": ["files_helper"]
+    },
+    "namespace_replacement_patterns": {
+        "Acme\\Pattern": "Custom\\Pattern",
+        "~^Acme\\\\Rx(.*)~": "Rx$1"
+    }
+}

@@ -95,7 +95,7 @@ fn update_call_sites_and_parallel_serialize_as_they_are_written() {
         json(r#"{"update_call_sites": ["a"]}"#)["update_call_sites"],
         serde_json::json!(["a"])
     );
-    assert_eq!(json("{}")["parallel"], true);
+    assert_eq!(json("{}")["parallel"], "auto");
     assert_eq!(json(r#"{"parallel": false}"#)["parallel"], false);
     assert_eq!(json(r#"{"parallel": 8}"#)["parallel"], 8);
 }
@@ -121,4 +121,19 @@ fn serializes_namespace_replacement_patterns_in_priority_order() {
     let middle = json.find("\"Middle\"").unwrap();
 
     assert!(zebra < apple && apple < middle, "{json}");
+}
+
+#[test]
+fn every_spelling_of_automatic_serializes_as_auto_and_round_trips() {
+    for value in [r#""auto""#, "true", "0"] {
+        let strauss = format!(r#"{{"parallel": {value}}}"#);
+
+        assert_eq!(
+            serde_json::to_value(strauss_only(&strauss)).unwrap()["parallel"],
+            "auto",
+            "{value}"
+        );
+
+        assert_round_trips(&strauss, None);
+    }
 }

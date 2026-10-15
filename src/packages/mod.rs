@@ -13,7 +13,7 @@ mod resolve;
 #[allow(unused_imports)]
 pub use error::PackagesError;
 #[allow(unused_imports)]
-pub use files::enumerate_files;
+pub use files::{enumerate_files, is_target_the_vendor_directory};
 #[allow(unused_imports)]
 pub use model::*;
 #[allow(unused_imports)]

@@ -1,0 +1,12 @@
+{
+    "name": "acme/rename-app",
+    "require": {
+        "acme/psr4-lib": "*",
+        "acme/psr0-lib": "*",
+        "acme/classmap-lib": "*",
+        "acme/files-lib": "*",
+        "acme/keep": "*",
+        "acme/not-copied": "*",
+        "acme/pattern": "*"
+    }
+}

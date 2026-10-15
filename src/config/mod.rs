@@ -15,6 +15,9 @@
 //! * Values are validated when loaded (prefixes must be usable PHP names,
 //!   regular expressions must compile, `target_directory` must stay inside the
 //!   project) rather than failing, or misbehaving, later.
+//! * A `classmap_prefix` inferred from the package name ends in an underscore
+//!   (`Acme_My_Plugin_`). PHP Strauss leaves it off, which runs the prefix into
+//!   the class name.
 //! * Mozart's legacy keys (`dep_directory`, `dep_namespace`,
 //!   `exclude_packages`, …) and the `extra.mozart` fallback are not supported.
 #![allow(dead_code)]

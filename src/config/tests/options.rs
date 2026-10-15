@@ -187,3 +187,60 @@ fn parses_the_command_line_form_of_parallel() {
     assert!("many".parse::<Parallel>().is_err());
     assert!("1.5".parse::<Parallel>().is_err());
 }
+
+#[test]
+fn parallel_defaults_to_auto() {
+    assert_eq!(strauss_only("{}").parallel, Parallel::Auto);
+    assert_eq!(
+        strauss_only(r#"{"parallel": null}"#).parallel,
+        Parallel::Auto
+    );
+}
+
+#[test]
+fn parallel_accepts_auto_in_any_case() {
+    for value in ["auto", "AUTO", "Auto"] {
+        assert_eq!(
+            strauss_only(&format!(r#"{{"parallel": "{value}"}}"#)).parallel,
+            Parallel::Auto,
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn auto_true_and_zero_mean_the_same() {
+    for value in [r#""auto""#, "true", "0"] {
+        assert_eq!(
+            strauss_only(&format!(r#"{{"parallel": {value}}}"#)).parallel,
+            Parallel::Auto,
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn parallel_rejects_other_strings_and_names_auto() {
+    for value in [r#""fast""#, r#""4""#, r#""""#, r#""autos""#] {
+        let message = error(&format!(r#"{{"parallel": {value}}}"#));
+
+        assert!(
+            message.contains(r#"`parallel` must be "auto", true, false, or a whole number"#),
+            "{value}: {message}"
+        );
+    }
+}
+
+#[test]
+fn parses_auto_on_the_command_line() {
+    assert_eq!("auto".parse(), Ok(Parallel::Auto));
+    assert_eq!("AUTO".parse(), Ok(Parallel::Auto));
+    assert_eq!(" auto ".parse(), Ok(Parallel::Auto));
+
+    let message = "autos".parse::<Parallel>().unwrap_err();
+
+    assert_eq!(
+        message,
+        "expected `auto`, `true`, `false`, or a whole number"
+    );
+}

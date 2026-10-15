@@ -24,7 +24,7 @@
             "type": "string",
             "minLength": 1,
             "pattern": "^[A-Za-z_\\u0080-\\uffff][A-Za-z0-9_\\u0080-\\uffff]*$",
-            "description": "The string to prefix class names in the global namespace with, e.g. `Acme_Plugin_`. Inferred from composer.json."
+            "description": "The string to prefix class names in the global namespace with, e.g. `Acme_Plugin_`. Inferred from composer.json when not set, in which case it ends in an underscore."
         },
         "constant_prefix": {
             "type": "string",
@@ -74,9 +74,12 @@
             "description": "Force an optimised, classmap-authoritative autoloader."
         },
         "parallel": {
-            "description": "How many worker processes analyse files. `true` or `0`: one per spare CPU. `false` or `1`: a single process. A number greater than 1: at most that many.",
-            "default": true,
+            "description": "How many workers analyse files. `\"auto\"` (the default), `true` or `0`: one per available CPU. `false` or `1`: a single worker. A number greater than 1: at most that many.",
+            "default": "auto",
             "oneOf": [
+                {
+                    "const": "auto"
+                },
                 {
                     "type": "boolean"
                 },

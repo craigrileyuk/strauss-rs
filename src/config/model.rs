@@ -68,7 +68,7 @@ pub struct Config {
     /// autoloader. Default `true`.
     pub optimize_autoloader: bool,
 
-    /// `parallel`. Default: as many workers as there are spare CPUs.
+    /// `parallel`. Default `auto`: one worker per available CPU.
     pub parallel: Parallel,
 
     /// `override_autoload`: autoload settings that replace a package's own,
@@ -185,7 +185,7 @@ impl FromStr for UpdateCallSites {
 /// `parallel`: how many worker processes analyse files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Parallel {
-    /// `true` or `0`: as many workers as there are spare CPUs.
+    /// `"auto"`, `true` or `0`: one worker per available CPU.
     Auto,
     /// `false` or `1`: do everything in one process.
     Disabled,
@@ -194,8 +194,8 @@ pub enum Parallel {
 }
 
 impl Parallel {
-    /// `0` is as many workers as there are spare CPUs, `1` is a single
-    /// process, and anything larger caps the number of workers.
+    /// `0` is automatic (one worker per available CPU), `1` is a single
+    /// worker, and anything larger caps the number of workers.
     pub fn from_workers(workers: usize) -> Self {
         match workers {
             0 => Parallel::Auto,
@@ -208,22 +208,22 @@ impl Parallel {
 impl Serialize for Parallel {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Parallel::Auto => serializer.serialize_bool(true),
+            Parallel::Auto => serializer.serialize_str("auto"),
             Parallel::Disabled => serializer.serialize_bool(false),
             Parallel::Workers(workers) => serializer.serialize_u64(*workers as u64),
         }
     }
 }
 
-/// The command line form: `true`, `false`, or a number of workers, as in
-/// `--parallel=4`.
+/// The command line form: `auto`, `true`, `false`, or a number of workers, as
+/// in `--parallel=4`.
 impl FromStr for Parallel {
     type Err = String;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let value = value.trim();
 
-        if value.eq_ignore_ascii_case("true") {
+        if value.eq_ignore_ascii_case("auto") || value.eq_ignore_ascii_case("true") {
             return Ok(Parallel::Auto);
         }
 
@@ -234,7 +234,7 @@ impl FromStr for Parallel {
         value
             .parse::<usize>()
             .map(Parallel::from_workers)
-            .map_err(|_| "expected `true`, `false`, or a whole number".to_string())
+            .map_err(|_| "expected `auto`, `true`, `false`, or a whole number".to_string())
     }
 }
 
