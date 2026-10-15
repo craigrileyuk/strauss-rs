@@ -1,0 +1,14 @@
+{
+    "name": "acme/app",
+    "require": {
+        "php": ">=8.0",
+        "ext-json": "*",
+        "acme/lib": "^1.0",
+        "acme/logger": "^1.0",
+        "acme/meta": "*",
+        "acme/plugin-pkg": "*",
+        "missing/pkg": "^1.0",
+        "acme/missing-dir": "*",
+        "php-http/client-implementation": "*"
+    }
+}

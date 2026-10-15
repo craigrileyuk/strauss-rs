@@ -10,6 +10,7 @@
 //! use lookarounds and backreferences.
 
 use fancy_regex::{Captures, Regex};
+use serde::{Serialize, Serializer};
 
 #[derive(Debug)]
 pub struct PhpPattern {
@@ -87,6 +88,19 @@ impl PhpPattern {
     }
 }
 
+/// Patterns and replacements are written back as the strings the user gave.
+impl Serialize for PhpPattern {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.source)
+    }
+}
+
+impl Serialize for Replacement {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.source)
+    }
+}
+
 /// The text between a pattern's delimiters, if it has them.
 ///
 /// A delimiter is any character other than a letter, digit, backslash or
@@ -113,6 +127,7 @@ fn delimited_body(raw: &str) -> Option<&str> {
 /// A `preg_replace` replacement string, parsed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Replacement {
+    source: String,
     parts: Vec<Part>,
 }
 
@@ -176,7 +191,15 @@ impl Replacement {
 
         flush(&mut literal, &mut parts);
 
-        Self { parts }
+        Self {
+            source: raw.to_string(),
+            parts,
+        }
+    }
+
+    /// The replacement as the user wrote it.
+    pub fn source(&self) -> &str {
+        &self.source
     }
 
     fn expand(&self, captures: &Captures<'_, str>, output: &mut String) {

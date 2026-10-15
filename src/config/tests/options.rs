@@ -154,3 +154,36 @@ fn rejects_non_boolean_booleans() {
     assert!(error(r#"{"delete_vendor_packages": "yes"}"#).contains("invalid type: string"));
     assert!(error(r#"{"optimize_autoloader": 1}"#).contains("invalid type"));
 }
+
+#[test]
+fn parses_the_command_line_form_of_update_call_sites() {
+    assert_eq!("true".parse(), Ok(UpdateCallSites::FromAutoload));
+    assert_eq!("TRUE".parse(), Ok(UpdateCallSites::FromAutoload));
+    assert_eq!("false".parse(), Ok(UpdateCallSites::Disabled));
+    assert_eq!(
+        "includes, templates ,".parse(),
+        Ok(UpdateCallSites::Paths(vec![
+            "includes".into(),
+            "templates".into()
+        ]))
+    );
+    assert_eq!(
+        "src".parse(),
+        Ok(UpdateCallSites::Paths(vec!["src".into()]))
+    );
+    assert!("".parse::<UpdateCallSites>().is_err());
+    assert!(" , ".parse::<UpdateCallSites>().is_err());
+}
+
+#[test]
+fn parses_the_command_line_form_of_parallel() {
+    assert_eq!("true".parse(), Ok(Parallel::Auto));
+    assert_eq!("false".parse(), Ok(Parallel::Disabled));
+    assert_eq!("0".parse(), Ok(Parallel::Auto));
+    assert_eq!("1".parse(), Ok(Parallel::Disabled));
+    assert_eq!("6".parse(), Ok(Parallel::Workers(6)));
+    assert_eq!(" 6 ".parse(), Ok(Parallel::Workers(6)));
+    assert!("-1".parse::<Parallel>().is_err());
+    assert!("many".parse::<Parallel>().is_err());
+    assert!("1.5".parse::<Parallel>().is_err());
+}

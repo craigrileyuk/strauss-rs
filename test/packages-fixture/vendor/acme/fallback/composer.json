@@ -1,0 +1,5 @@
+{
+    "type": "library",
+    "autoload": {"psr-4": {"Acme\\Fallback\\": "src/"}},
+    "require": {"php": ">=7.4"}
+}
