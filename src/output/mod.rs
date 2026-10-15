@@ -8,16 +8,20 @@
 #![allow(dead_code)]
 
 mod autoload;
+mod call_sites;
 mod clean;
 mod copy;
 mod error;
 mod header;
+mod include;
 
 // The module's API; the CLI uses some of it so far.
 #[allow(unused_imports)]
 pub use error::OutputError;
 #[allow(unused_imports)]
 pub use header::{Header, add_header, format_date, today};
+#[allow(unused_imports)]
+pub use include::{Included, include_autoloader};
 
 use std::collections::HashSet;
 use std::fs;
@@ -69,6 +73,9 @@ pub struct Report {
     /// How many of them have changes made to them.
     pub modified: usize,
 
+    /// Project files changed in place by `update_call_sites`.
+    pub call_sites_updated: usize,
+
     /// The autoloader files written, relative to the project.
     pub autoloader: Vec<String>,
 
@@ -108,6 +115,8 @@ pub fn write(input: &Input, options: &Options) -> Result<Report, OutputError> {
             .map(|name| format!("{}/{name}", input.config.target_directory))
             .collect();
     }
+
+    report.call_sites_updated = call_sites::run(input, options)?;
 
     let deleted = clean::run(input, options, &copied.written, &symlinked)?;
 

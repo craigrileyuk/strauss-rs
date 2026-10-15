@@ -84,6 +84,13 @@ enum Command {
     /// any warnings go to stderr.
     Prefix(PrefixArgs),
 
+    /// Make `vendor/autoload.php` load the prefixed packages' autoloader too.
+    ///
+    /// Adds a `require_once` of the target directory's `autoload.php` before
+    /// Composer's loader is returned. Safe to run again. Run `prefix` first so
+    /// there is an autoloader to include.
+    IncludeAutoloader(IncludeArgs),
+
     /// Analyse a PHP file and print the symbols it declares and refers to.
     Analyse {
         /// The PHP file to analyse.
@@ -125,6 +132,17 @@ struct ScanArgs {
     parallel: ParallelArgs,
 }
 
+/// A project, and whether to write the change.
+#[derive(Debug, Args)]
+struct IncludeArgs {
+    #[command(flatten)]
+    project: ProjectArgs,
+
+    /// Work out what would change, and write nothing.
+    #[arg(long)]
+    dry_run: bool,
+}
+
 /// A project, how to analyse its files, and which symbols to show.
 #[derive(Debug, Args)]
 struct PlanArgs {
@@ -137,11 +155,32 @@ struct PlanArgs {
     packages: Vec<String>,
 }
 
+/// `--updateCallSites`, for the commands that plan changes to files.
+#[derive(Debug, Args)]
+struct CallSitesArgs {
+    /// Which project files to update where they use prefixed symbols,
+    /// overriding `update_call_sites`: `true` for the files in the project's
+    /// `autoload`, `false` for none, or a comma-separated list of files and
+    /// directories.
+    #[arg(
+        long = "updateCallSites",
+        alias = "update-call-sites",
+        value_name = "true|false|PATHS",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true"
+    )]
+    update_call_sites: Option<UpdateCallSites>,
+}
+
 /// A project, how to analyse its files, and which files to show.
 #[derive(Debug, Args)]
 struct DiffArgs {
     #[command(flatten)]
     scan: ScanArgs,
+
+    #[command(flatten)]
+    call_sites: CallSitesArgs,
 
     /// Only show the files of this package. Can be given more than once.
     #[arg(long = "package", value_name = "NAME")]
@@ -157,6 +196,9 @@ struct DiffArgs {
 struct PrefixArgs {
     #[command(flatten)]
     scan: ScanArgs,
+
+    #[command(flatten)]
+    call_sites: CallSitesArgs,
 
     /// Work out what would be written, and write nothing.
     #[arg(long)]
@@ -276,6 +318,8 @@ fn execute(command: Command) -> Result {
         }
 
         Command::Prefix(args) => prefix(&args),
+
+        Command::IncludeAutoloader(args) => include_autoloader(&args),
 
         Command::Analyse { file } => analyse_file(&file),
     }
@@ -398,8 +442,12 @@ struct Analysed {
 
 /// Runs the analysis that `diff` and `prefix` share, reporting problems on
 /// stderr.
-fn analyse_project(args: &ScanArgs) -> Result<Analysed> {
+fn analyse_project(args: &ScanArgs, call_sites: &CallSitesArgs) -> Result<Analysed> {
     let mut config = load_config(&args.project)?;
+
+    if let Some(update_call_sites) = &call_sites.update_call_sites {
+        config.update_call_sites = update_call_sites.clone();
+    }
 
     if let Some(parallel) = args.parallel.parallel {
         config.parallel = parallel;
@@ -449,7 +497,7 @@ fn render_diff(args: &DiffArgs) -> Result<String> {
     let Analysed {
         edits: mut edit_plan,
         ..
-    } = analyse_project(&args.scan)?;
+    } = analyse_project(&args.scan, &args.call_sites)?;
 
     if !args.packages.is_empty() {
         edit_plan.files.retain(|file| {
@@ -457,11 +505,13 @@ fn render_diff(args: &DiffArgs) -> Result<String> {
                 .iter()
                 .any(|wanted| wanted.eq_ignore_ascii_case(&file.package))
         });
+
+        edit_plan.call_sites.clear();
     }
 
     summary!(
         "{} files to change with {} edits; {} unchanged; {} skipped",
-        edit_plan.files.len(),
+        edit_plan.files.len() + edit_plan.call_sites.len(),
         edit_plan.edit_count(),
         edit_plan.unchanged_files,
         edit_plan.skipped.len()
@@ -473,7 +523,7 @@ fn render_diff(args: &DiffArgs) -> Result<String> {
 
     let mut output = String::new();
 
-    for file in &edit_plan.files {
+    for file in edit_plan.files.iter().chain(&edit_plan.call_sites) {
         let original = fs::read_to_string(&file.source_path)
             .map_err(|error| format!("could not read {}: {error}", file.source_path.display()))?;
 
@@ -495,7 +545,7 @@ fn render_diff(args: &DiffArgs) -> Result<String> {
 }
 
 fn prefix(args: &PrefixArgs) -> Result {
-    let analysed = analyse_project(&args.scan)?;
+    let analysed = analyse_project(&args.scan, &args.call_sites)?;
 
     let report = output::write(
         &output::Input {
@@ -528,6 +578,28 @@ fn prefix(args: &PrefixArgs) -> Result {
 
     let verb = if args.dry_run { "Would write" } else { "Wrote" };
 
+    if analysed.config.include_autoloader {
+        if report.autoloader.is_empty() {
+            eprintln!(
+                "warning: include_autoloader: no autoloader was written, so there is nothing to include (see classmap_output)"
+            );
+        } else {
+            match output::include_autoloader(&analysed.config, args.dry_run) {
+                Ok(output::Included::Added) => summary!(
+                    "{} {}/autoload.php to load the prefixed packages",
+                    if args.dry_run {
+                        "Would update"
+                    } else {
+                        "Updated"
+                    },
+                    analysed.config.vendor_directory.trim_matches('/')
+                ),
+                Ok(output::Included::AlreadyIncluded) => {}
+                Err(error) => eprintln!("warning: include_autoloader: {error}"),
+            }
+        }
+    }
+
     summary!(
         "{verb} {} files to {} ({} modified)",
         report.written,
@@ -540,6 +612,18 @@ fn prefix(args: &PrefixArgs) -> Result {
             "{verb} {} with {} classes",
             report.autoloader.join(" and "),
             report.classmap_entries
+        );
+    }
+
+    if report.call_sites_updated > 0 {
+        summary!(
+            "{} {} of your own files",
+            if args.dry_run {
+                "Would update"
+            } else {
+                "Updated"
+            },
+            report.call_sites_updated
         );
     }
 
@@ -566,6 +650,33 @@ fn prefix(args: &PrefixArgs) -> Result {
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
+    }
+
+    Ok(())
+}
+
+fn include_autoloader(args: &IncludeArgs) -> Result {
+    let config = load_config(&args.project)?;
+
+    let vendor_autoload = format!("{}/autoload.php", config.vendor_directory.trim_matches('/'));
+    let target_autoload = format!("{}/autoload.php", config.target_directory.trim_matches('/'));
+
+    match output::include_autoloader(&config, args.dry_run)? {
+        output::Included::Added => summary!(
+            "{} {vendor_autoload} to load {target_autoload}",
+            if args.dry_run {
+                "Would update"
+            } else {
+                "Updated"
+            }
+        ),
+        output::Included::AlreadyIncluded => {
+            summary!("{vendor_autoload} already loads {target_autoload}")
+        }
+    }
+
+    if !config.project_dir.join(&target_autoload).is_file() {
+        eprintln!("warning: {target_autoload} does not exist yet; run `prefix` to write it");
     }
 
     Ok(())

@@ -9,7 +9,7 @@ use crate::symbols::SymbolKind;
 /// interface, a trait and an enum can't have the same name; a class and a
 /// function can.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Group {
+pub(crate) enum Group {
     ClassLike,
     Function,
     Constant,
@@ -55,7 +55,7 @@ struct Entry {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct NameMap {
+pub(crate) struct NameMap {
     class_likes: HashMap<String, Entry>,
     functions: HashMap<String, Entry>,
     constants: HashMap<String, Entry>,

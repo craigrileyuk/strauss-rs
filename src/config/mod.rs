@@ -242,6 +242,7 @@ impl Config {
             exclude_git_files: raw.exclude_git_files.unwrap_or(true),
             include_modified_date: raw.include_modified_date.unwrap_or(true),
             include_author: raw.include_author.unwrap_or(true),
+            include_autoloader: raw.include_autoloader.unwrap_or(false),
             classmap_output,
         })
     }

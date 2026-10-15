@@ -8,6 +8,7 @@
 #![allow(dead_code)]
 
 mod apply;
+mod call_sites;
 mod context;
 mod file;
 mod model;
@@ -32,7 +33,7 @@ use crate::rename::{RenamePlan, is_within_namespace};
 use crate::symbols::{ScannedFile, SymbolTable};
 
 use file::{FileInput, plan_file};
-use names::NameMap;
+pub(crate) use names::NameMap;
 
 /// Plans the changes to every PHP file that is copied.
 pub fn plan(
@@ -142,6 +143,8 @@ pub fn plan(
             }
         }
     }
+
+    call_sites::plan(config, &names, &mut plan);
 
     plan
 }

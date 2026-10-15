@@ -373,8 +373,16 @@ fn diff_shows_a_diff_of_every_package_by_default() {
 }
 
 #[test]
-fn diff_does_not_take_options_that_only_affect_the_configuration() {
-    let error = parse_args(&["diff", "--updateCallSites"]).unwrap_err();
+fn diff_and_prefix_take_update_call_sites() {
+    assert_eq!(
+        diff_args(&["--updateCallSites"])
+            .call_sites
+            .update_call_sites,
+        Some(UpdateCallSites::FromAutoload)
+    );
+    assert_eq!(diff_args(&[]).call_sites.update_call_sites, None);
+
+    let error = parse_args(&["diff", "--parallel=2", "--no-such-option"]).unwrap_err();
 
     assert_eq!(error.kind(), ErrorKind::UnknownArgument);
 }

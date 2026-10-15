@@ -76,6 +76,10 @@ fn schema_defaults_match_the_loader() {
         default("include_author"),
         Value::from(config.include_author)
     );
+    assert_eq!(
+        default("include_autoloader"),
+        Value::from(config.include_autoloader)
+    );
     assert_eq!(default("update_call_sites"), Value::Bool(false));
     assert_eq!(default("parallel"), Value::from("auto"));
 }

@@ -29,7 +29,7 @@ pub struct Autoload {
 
 impl Autoload {
     /// Every path the autoload section refers to.
-    pub(super) fn paths(&self) -> impl Iterator<Item = &str> {
+    pub fn paths(&self) -> impl Iterator<Item = &str> {
         let mapped = self
             .psr4
             .0

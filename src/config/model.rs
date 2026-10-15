@@ -120,6 +120,11 @@ pub struct Config {
     /// files. Default `true`.
     pub include_author: bool,
 
+    /// `include_autoloader`: after `prefix`, make the vendor directory's
+    /// `autoload.php` load the prefixed packages' autoloader (what the
+    /// `include-autoloader` command does). Default `false`.
+    pub include_autoloader: bool,
+
     /// `classmap_output`: write `autoload-classmap.php` and `autoload.php`.
     /// Inferred: `false` when `target_directory` is in the project's
     /// `autoload`, `true` otherwise.
