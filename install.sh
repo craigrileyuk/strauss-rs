@@ -187,6 +187,22 @@ installed_tag() {
     return 0
 }
 
+# The schema is in each release's archive, but a binary installed before that was
+# so (or from an archive without it) would never get one, because the archive is
+# only unpacked when the binary changes. So fetch it by itself when it is missing.
+ensure_schema() { # tag
+    [ -f "$DIR/strauss.schema.json" ] && return 0
+
+    mkdir -p "$DIR"
+
+    if download "$BASE_URL/download/$1/strauss.schema.json" "$DIR/strauss.schema.json.new" 2>/dev/null; then
+        mv -f "$DIR/strauss.schema.json.new" "$DIR/strauss.schema.json"
+    else
+        rm -f "$DIR/strauss.schema.json.new"
+        say "could not download strauss.schema.json for $1; \"\$schema\" in strauss.json won't resolve"
+    fi
+}
+
 # Adds what this script puts in $DIR to $DIR/.gitignore, if it isn't there yet.
 update_gitignore() {
     [ "${STRAUSS_RS_GITIGNORE:-1}" = 0 ] && return 0
@@ -242,6 +258,7 @@ main() {
         say "installed $wanted in $DIR"
     fi
 
+    ensure_schema "$wanted"
     update_gitignore
 
     if [ "$#" -gt 0 ]; then

@@ -12,6 +12,7 @@ use crate::packages::is_target_the_vendor_directory;
 pub(super) struct Deleted {
     pub files: usize,
     pub packages: Vec<String>,
+    pub composer_updated: bool,
     pub warnings: Vec<String>,
 }
 
@@ -41,6 +42,7 @@ pub(super) fn run(
     }
 
     let vendor = config.project_dir.join(&config.vendor_directory);
+    let mut affected: Vec<String> = Vec::new();
 
     for package in &input.packages.packages {
         let Some(path) = &package.path else {
@@ -92,6 +94,7 @@ pub(super) fn run(
 
             deleted.files += copied.len();
             deleted.packages.push(package.name.clone());
+            affected.push(package.name.clone());
             continue;
         }
 
@@ -101,6 +104,8 @@ pub(super) fn run(
                 package.name
             ));
         }
+
+        affected.push(package.name.clone());
 
         for file in copied {
             if !options.dry_run {
@@ -115,6 +120,17 @@ pub(super) fn run(
             remove_empty_directories(path);
             remove_empty_parents(path, &vendor);
         }
+    }
+
+    if !options.dry_run && !affected.is_empty() {
+        super::composer::forget_packages(
+            config,
+            &affected,
+            options.composer.as_deref(),
+            &mut deleted.warnings,
+        );
+
+        deleted.composer_updated = true;
     }
 
     Ok(deleted)

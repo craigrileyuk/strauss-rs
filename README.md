@@ -112,6 +112,17 @@ This changes your source files, so commit first and look at `diff --updateCallSi
 
 Set `"optimize_autoloader": false` to also fall back to each package's PSR-4 directories, using the renamed namespaces, for classes that aren't in the classmap, such as files added after `prefix` ran. Packages that use `psr-0` are only loaded through the classmap, and you get a warning if there are any.
 
+## Deleting the originals
+
+`delete_vendor_packages` (and `delete_vendor_files`) remove the original packages from `vendor/` once they've been copied and prefixed, so you don't ship two copies. Composer's own autoloader still lists those packages and would fatally error on their missing `files`, so after deleting, `prefix`:
+
+1. removes the deleted packages from `vendor/composer/installed.json`, and
+2. runs `composer dump-autoload --no-scripts` to regenerate Composer's autoloader from what is left.
+
+If `composer` isn't on your `PATH`, set `STRAUSS_RS_COMPOSER` to the command to run. If it can't be run, `prefix` warns and tells you what to do by hand. Nothing is deleted in a `--dry-run`.
+
+Because the packages are gone from `installed.json`, the next `prefix` needs them back: run `composer install` first. Hooking `prefix` onto Composer's `post-install-cmd` and `post-update-cmd` (see below) does this for you. `--no-scripts` stops the regeneration from triggering those hooks again.
+
 ## Run it from Composer
 
 ```json
