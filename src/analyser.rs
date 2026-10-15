@@ -2,14 +2,15 @@
 #![allow(unused_imports)]
 use php_ast::{
     Span,
-    ast::{BinaryOp, UseKind},
+    ast::{BinaryOp, NameKind, UseKind},
     owned::{
-        Arg, ArrowFunctionExpr, CallableCreateKind, CatchClause, ClassConstDecl, ClassDecl,
-        ClassMember, ClassMemberKind, ClosureExpr, DoWhileStmt, EnumDecl, EnumMemberKind, Expr,
-        ExprKind, ForStmt, ForeachStmt, FunctionDecl, IfStmt, InterfaceDecl, MatchExpr, MethodDecl,
-        Name, NamespaceBody, Program, PropertyDecl, StaticAccessExpr, StaticDynMethodCallExpr,
-        Stmt, StmtKind, SwitchBody, SwitchCase, SwitchStmt, TraitDecl, TraitUseDecl, TryCatchStmt,
-        TypeHint, TypeHintKind, WhileStmt, YieldExpr,
+        Arg, ArrowFunctionExpr, Attribute, CallableCreateKind, CatchClause, ClassConstDecl,
+        ClassDecl, ClassMember, ClassMemberKind, ClosureExpr, DoWhileStmt, EnumDecl,
+        EnumMemberKind, Expr, ExprKind, ForStmt, ForeachStmt, FunctionDecl, IfStmt, InterfaceDecl,
+        MatchExpr, MethodDecl, Name, NamespaceBody, Param, Program, PropertyDecl, PropertyHook,
+        PropertyHookBody, StaticAccessExpr, StaticDynMethodCallExpr, Stmt, StmtKind, SwitchBody,
+        SwitchCase, SwitchStmt, TraitDecl, TraitUseDecl, TryCatchStmt, TypeHint, TypeHintKind,
+        WhileStmt, YieldExpr,
     },
     resolve::{NameContext, NameResolver, ResolvedName},
 };
@@ -17,6 +18,10 @@ use php_ast::{
 #[derive(Debug)]
 pub struct Reference {
     pub name: String,
+    /// Global name PHP falls back to at runtime when `name` isn't defined.
+    /// Only set for unqualified function and constant references inside
+    /// a namespace with no matching import.
+    pub fallback: Option<String>,
     pub span: Span,
     pub kind: ReferenceKind,
 }
@@ -26,6 +31,7 @@ pub enum ReferenceKind {
     ClassName,
     FunctionName,
     ConstantName,
+    ClassConstantName,
 }
 
 #[derive(Debug)]
@@ -68,11 +74,10 @@ pub enum SymbolKind {
     Trait,
     Enum,
     Function,
+    Constant,
 }
 
 struct AnalysisContext<'a> {
-    namespace: Option<&'a str>,
-    imports: &'a [Import],
     resolver: &'a NameResolver,
 }
 
@@ -166,98 +171,28 @@ fn analyse_statements(stmts: &[Stmt], namespace: Option<&str>, analysis: &mut Fi
                 }
             }
 
-            StmtKind::Class(class) => {
-                if let Some(Some(name)) = &class.name {
-                    let full_name = qualify_declared_name(name, namespace);
-
-                    symbols.push(DeclaredSymbol {
-                        name: full_name,
-                        kind: SymbolKind::Class,
-                    });
-                }
-            }
-
-            StmtKind::Interface(interface) => {
-                if let Some(name) = &interface.name {
-                    let full_name = qualify_declared_name(name, namespace);
-
-                    symbols.push(DeclaredSymbol {
-                        name: full_name,
-                        kind: SymbolKind::Interface,
-                    });
-                }
-            }
-
-            StmtKind::Trait(trait_decl) => {
-                if let Some(name) = &trait_decl.name {
-                    let full_name = qualify_declared_name(name, namespace);
-
-                    symbols.push(DeclaredSymbol {
-                        name: full_name,
-                        kind: SymbolKind::Trait,
-                    });
-                }
-            }
-
-            StmtKind::Enum(enum_decl) => {
-                if let Some(name) = &enum_decl.name {
-                    let full_name = qualify_declared_name(name, namespace);
-
-                    symbols.push(DeclaredSymbol {
-                        name: full_name,
-                        kind: SymbolKind::Enum,
-                    });
-                }
-            }
-
-            StmtKind::Function(function) => {
-                if let Some(name) = &function.name {
-                    let full_name = qualify_declared_name(name, namespace);
-
-                    symbols.push(DeclaredSymbol {
-                        name: full_name,
-                        kind: SymbolKind::Function,
-                    });
-                }
-            }
-
-            _ => {}
+            // Declarations may be nested (inside `if` blocks, function
+            // bodies, etc.), so they're collected recursively.
+            _ => collect_declarations(std::slice::from_ref(stmt), namespace, &mut symbols),
         }
     }
 
     let context = AnalysisContext {
-        namespace,
-        imports: &imports,
         resolver: &resolver,
     };
 
     let mut references = Vec::new();
 
-    // Pass 2: collect references.
+    // Pass 2: collect references from every statement, including
+    // top-level code and nested declarations.
     for stmt in stmts.iter() {
-        match &stmt.kind {
-            StmtKind::Class(class) => {
-                collect_class(class, &context, &mut references);
-            }
+        collect_stmt(stmt, &context, &mut references);
+    }
 
-            StmtKind::Interface(interface) => {
-                collect_interface(interface, &context, &mut references);
-            }
-
-            StmtKind::Trait(trait_decl) => {
-                collect_trait(trait_decl, &context, &mut references);
-            }
-
-            StmtKind::Enum(enum_decl) => {
-                collect_enum(enum_decl, &context, &mut references);
-            }
-
-            StmtKind::Function(function) => {
-                collect_function(function, &context, &mut references);
-            }
-
-            _ => {}
-        }
+    // Code before the first `namespace` statement can only be things like
+    // `declare(strict_types=1);`. Don't report an empty global namespace.
+    if namespace.is_none() && imports.is_empty() && symbols.is_empty() && references.is_empty() {
+        return;
     }
 
     analysis.namespaces.push(NamespaceAnalysis {
@@ -266,6 +201,147 @@ fn analyse_statements(stmts: &[Stmt], namespace: Option<&str>, analysis: &mut Fi
         symbols,
         references,
     });
+}
+
+/// Records every symbol declared by `stmts`, including declarations nested
+/// in blocks, conditionals, `try` statements and function bodies.
+fn collect_declarations(
+    stmts: &[Stmt],
+    namespace: Option<&str>,
+    symbols: &mut Vec<DeclaredSymbol>,
+) {
+    for stmt in stmts {
+        match &stmt.kind {
+            StmtKind::Class(class) => {
+                if let Some(Some(name)) = &class.name {
+                    push_symbol(symbols, name, namespace, SymbolKind::Class);
+                }
+            }
+
+            StmtKind::Interface(interface) => {
+                if let Some(name) = &interface.name {
+                    push_symbol(symbols, name, namespace, SymbolKind::Interface);
+                }
+            }
+
+            StmtKind::Trait(trait_decl) => {
+                if let Some(name) = &trait_decl.name {
+                    push_symbol(symbols, name, namespace, SymbolKind::Trait);
+                }
+            }
+
+            StmtKind::Enum(enum_decl) => {
+                if let Some(name) = &enum_decl.name {
+                    push_symbol(symbols, name, namespace, SymbolKind::Enum);
+                }
+            }
+
+            StmtKind::Function(function) => {
+                if let Some(name) = &function.name {
+                    push_symbol(symbols, name, namespace, SymbolKind::Function);
+                }
+
+                collect_declarations(&function.body.stmts, namespace, symbols);
+            }
+
+            // `const FOO = 1;` is namespaced like any other declaration.
+            StmtKind::Const(items) => {
+                for item in items.iter() {
+                    if let Some(name) = &item.name {
+                        push_symbol(symbols, name, namespace, SymbolKind::Constant);
+                    }
+                }
+            }
+
+            // `define('FOO', 1);`
+            StmtKind::Expression(expr) => {
+                if let Some(name) = defined_constant_name(expr) {
+                    symbols.push(DeclaredSymbol {
+                        name,
+                        kind: SymbolKind::Constant,
+                    });
+                }
+            }
+
+            StmtKind::Block(block) => {
+                collect_declarations(&block.stmts, namespace, symbols);
+            }
+
+            StmtKind::If(if_stmt) => {
+                collect_declarations(
+                    std::slice::from_ref(if_stmt.then_branch.as_ref()),
+                    namespace,
+                    symbols,
+                );
+
+                for branch in if_stmt.elseif_branches.iter() {
+                    collect_declarations(std::slice::from_ref(&branch.body), namespace, symbols);
+                }
+
+                if let Some(branch) = &if_stmt.else_branch {
+                    collect_declarations(std::slice::from_ref(branch.as_ref()), namespace, symbols);
+                }
+            }
+
+            StmtKind::TryCatch(try_catch) => {
+                collect_declarations(&try_catch.body.stmts, namespace, symbols);
+
+                for catch in try_catch.catches.iter() {
+                    collect_declarations(&catch.body.stmts, namespace, symbols);
+                }
+
+                if let Some(finally) = &try_catch.finally {
+                    collect_declarations(&finally.stmts, namespace, symbols);
+                }
+            }
+
+            StmtKind::Declare(declare) => {
+                if let Some(body) = &declare.body {
+                    collect_declarations(std::slice::from_ref(body.as_ref()), namespace, symbols);
+                }
+            }
+
+            _ => {}
+        }
+    }
+}
+
+fn push_symbol(
+    symbols: &mut Vec<DeclaredSymbol>,
+    name: &str,
+    namespace: Option<&str>,
+    kind: SymbolKind,
+) {
+    symbols.push(DeclaredSymbol {
+        name: qualify_declared_name(name, namespace),
+        kind,
+    });
+}
+
+/// The constant name declared by a `define('NAME', ...)` call.
+///
+/// The name is a string, so it isn't affected by the current namespace: it
+/// is global unless the string itself contains a namespace.
+fn defined_constant_name(expr: &Expr) -> Option<String> {
+    let ExprKind::FunctionCall(call) = &expr.kind else {
+        return None;
+    };
+
+    let ExprKind::Identifier(function) = &call.name.kind else {
+        return None;
+    };
+
+    if !function
+        .trim_start_matches('\\')
+        .eq_ignore_ascii_case("define")
+    {
+        return None;
+    }
+
+    match &call.args.first()?.value.as_ref()?.kind {
+        ExprKind::String(name) => Some(name.trim_start_matches('\\').to_string()),
+        _ => None,
+    }
 }
 
 fn qualify_declared_name(name: &str, namespace: Option<&str>) -> String {
@@ -350,12 +426,12 @@ fn collect_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Ref
 
         ExprKind::NullsafePropertyAccess(access) => {
             collect_expr(access.object.as_ref(), context, references);
-            collect_expr(access.property.as_ref(), context, references);
+            collect_member_name(access.property.as_ref(), context, references);
         }
 
         ExprKind::NullsafeMethodCall(call) => {
             collect_expr(call.object.as_ref(), context, references);
-            collect_expr(call.method.as_ref(), context, references);
+            collect_member_name(call.method.as_ref(), context, references);
 
             for arg in call.args.iter() {
                 collect_arg(arg, context, references);
@@ -363,8 +439,8 @@ fn collect_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Ref
         }
 
         ExprKind::StaticDynMethodCall(call) => {
-            collect_expr(call.class.as_ref(), context, references);
-            collect_expr(call.method.as_ref(), context, references);
+            collect_class_expr(call.class.as_ref(), context, references);
+            collect_member_name(call.method.as_ref(), context, references);
 
             for arg in call.args.iter() {
                 collect_arg(arg, context, references);
@@ -407,16 +483,22 @@ fn collect_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Ref
         }
 
         ExprKind::Binary(binary) => {
+            collect_expr(binary.left.as_ref(), context, references);
+
             if binary.op == BinaryOp::Instanceof {
                 collect_class_expr(binary.right.as_ref(), context, references);
+            } else {
+                collect_expr(binary.right.as_ref(), context, references);
             }
-
-            collect_expr(binary.left.as_ref(), context, references);
-            collect_expr(binary.right.as_ref(), context, references);
         }
 
         ExprKind::StaticMethodCall(call) => {
             collect_class_expr(&call.class, context, references);
+            collect_member_name(call.method.as_ref(), context, references);
+
+            for arg in call.args.iter() {
+                collect_arg(arg, context, references);
+            }
         }
 
         ExprKind::StaticPropertyAccess(access) => {
@@ -427,11 +509,17 @@ fn collect_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Ref
             collect_class_expr(&access.class, context, references);
 
             if let ExprKind::Identifier(name) = &access.member.kind {
+                // `Foo::class` is the class name itself, already collected above.
+                if name.eq_ignore_ascii_case("class") {
+                    return;
+                }
+
                 if let Some(class_name) = resolve_class_expr_name(&access.class, context) {
                     references.push(Reference {
                         name: format!("{class_name}::{name}"),
+                        fallback: None,
                         span: access.member.span,
-                        kind: ReferenceKind::ConstantName,
+                        kind: ReferenceKind::ClassConstantName,
                     });
                 }
             } else {
@@ -468,7 +556,7 @@ fn collect_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Ref
 
         ExprKind::MethodCall(call) => {
             collect_expr(call.object.as_ref(), context, references);
-            collect_expr(call.method.as_ref(), context, references);
+            collect_member_name(call.method.as_ref(), context, references);
 
             for arg in call.args.iter() {
                 collect_arg(arg, context, references);
@@ -477,7 +565,7 @@ fn collect_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Ref
 
         ExprKind::PropertyAccess(access) => {
             collect_expr(access.object.as_ref(), context, references);
-            collect_expr(access.property.as_ref(), context, references);
+            collect_member_name(access.property.as_ref(), context, references);
         }
 
         ExprKind::Array(elements) => {
@@ -492,12 +580,12 @@ fn collect_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Ref
 
         ExprKind::StaticPropertyAccessDynamic { class, member } => {
             collect_class_expr(class.as_ref(), context, references);
-            collect_expr(member.as_ref(), context, references);
+            collect_member_name(member.as_ref(), context, references);
         }
 
         ExprKind::ClassConstAccessDynamic { class, member } => {
             collect_class_expr(class.as_ref(), context, references);
-            collect_expr(member.as_ref(), context, references);
+            collect_member_name(member.as_ref(), context, references);
         }
 
         ExprKind::AnonymousClass(class) => {
@@ -512,24 +600,87 @@ fn collect_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Ref
             CallableCreateKind::Method { object, method }
             | CallableCreateKind::NullsafeMethod { object, method } => {
                 collect_expr(object.as_ref(), context, references);
-                collect_expr(method.as_ref(), context, references);
+                collect_member_name(method.as_ref(), context, references);
             }
 
             CallableCreateKind::StaticMethod { class, method } => {
                 collect_class_expr(class.as_ref(), context, references);
-                collect_expr(method.as_ref(), context, references);
+                collect_member_name(method.as_ref(), context, references);
             }
         },
 
         ExprKind::Identifier(name) => {
-            references.push(Reference {
-                name: resolve_constant_name(name, context.namespace, context.imports),
-                span: expr.span,
-                kind: ReferenceKind::ConstantName,
-            });
+            references.extend(build_reference(
+                resolve_identifier(name, NameContext::Const, context),
+                expr.span,
+                ReferenceKind::ConstantName,
+            ));
         }
 
         _ => {}
+    }
+}
+
+fn collect_attributes(
+    attributes: &[Attribute],
+    context: &AnalysisContext,
+    references: &mut Vec<Reference>,
+) {
+    for attribute in attributes {
+        let resolved = context
+            .resolver
+            .resolve_owned_name(&attribute.name, NameContext::Class);
+
+        references.extend(build_reference(
+            resolved,
+            attribute.name.span,
+            ReferenceKind::ClassName,
+        ));
+
+        for arg in attribute.args.iter() {
+            collect_arg(arg, context, references);
+        }
+    }
+}
+
+fn collect_params(params: &[Param], context: &AnalysisContext, references: &mut Vec<Reference>) {
+    for param in params {
+        collect_attributes(&param.attributes, context, references);
+
+        if let Some(type_hint) = &param.type_hint {
+            collect_type_hint(type_hint, context, references);
+        }
+
+        if let Some(default) = &param.default {
+            collect_expr(default, context, references);
+        }
+
+        collect_property_hooks(&param.hooks, context, references);
+    }
+}
+
+fn collect_property_hooks(
+    hooks: &[PropertyHook],
+    context: &AnalysisContext,
+    references: &mut Vec<Reference>,
+) {
+    for hook in hooks {
+        collect_attributes(&hook.attributes, context, references);
+        collect_params(&hook.params, context, references);
+
+        match &hook.body {
+            PropertyHookBody::Block(block) => {
+                for stmt in block.stmts.iter() {
+                    collect_stmt(stmt, context, references);
+                }
+            }
+
+            PropertyHookBody::Expression(expr) => {
+                collect_expr(expr, context, references);
+            }
+
+            PropertyHookBody::Abstract => {}
+        }
     }
 }
 
@@ -538,15 +689,8 @@ fn collect_closure(
     context: &AnalysisContext,
     references: &mut Vec<Reference>,
 ) {
-    for param in closure.params.iter() {
-        if let Some(type_hint) = &param.type_hint {
-            collect_type_hint(type_hint, context, references);
-        }
-
-        if let Some(default) = &param.default {
-            collect_expr(default, context, references);
-        }
-    }
+    collect_attributes(&closure.attributes, context, references);
+    collect_params(&closure.params, context, references);
 
     if let Some(return_type) = &closure.return_type {
         collect_type_hint(return_type, context, references);
@@ -562,15 +706,8 @@ fn collect_arrow_function(
     context: &AnalysisContext,
     references: &mut Vec<Reference>,
 ) {
-    for param in arrow.params.iter() {
-        if let Some(type_hint) = &param.type_hint {
-            collect_type_hint(type_hint, context, references);
-        }
-
-        if let Some(default) = &param.default {
-            collect_expr(default, context, references);
-        }
-    }
+    collect_attributes(&arrow.attributes, context, references);
+    collect_params(&arrow.params, context, references);
 
     if let Some(return_type) = &arrow.return_type {
         collect_type_hint(return_type, context, references);
@@ -599,9 +736,10 @@ fn collect_match(
 
 fn resolve_class_expr_name(expr: &Expr, context: &AnalysisContext) -> Option<String> {
     match &expr.kind {
-        ExprKind::Identifier(name) => {
-            Some(resolve_class_name(name, context.namespace, context.imports))
-        }
+        ExprKind::Identifier(name) => match resolve_identifier(name, NameContext::Class, context) {
+            ResolvedName::Fqn(name) => Some(name),
+            _ => None,
+        },
 
         _ => None,
     }
@@ -610,156 +748,129 @@ fn resolve_class_expr_name(expr: &Expr, context: &AnalysisContext) -> Option<Str
 fn collect_class_expr(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Reference>) {
     match &expr.kind {
         ExprKind::Identifier(name) => {
-            references.push(Reference {
-                name: resolve_class_name(name, context.namespace, context.imports),
-                span: expr.span,
-                kind: ReferenceKind::ClassName,
-            });
+            references.extend(build_reference(
+                resolve_identifier(name, NameContext::Class, context),
+                expr.span,
+                ReferenceKind::ClassName,
+            ));
         }
 
-        ExprKind::AnonymousClass(class) => {
-            collect_class(class.as_ref(), context, references);
-        }
-
-        _ => {}
+        // Dynamic class expressions (`new $class`, anonymous classes, etc.).
+        _ => collect_expr(expr, context, references),
     }
 }
 
-fn resolve_class_name(name: &str, namespace: Option<&str>, imports: &[Import]) -> String {
-    if let Some(name) = name.strip_prefix('\\') {
-        return name.to_string();
-    }
-
-    if let Some(name) = name.strip_prefix("namespace\\") {
-        return match namespace {
-            Some(namespace) if !namespace.is_empty() => {
-                format!("{namespace}\\{name}")
-            }
-            _ => name.to_string(),
-        };
-    }
-
-    for import in imports {
-        if !matches!(import.kind, ImportKind::Class) {
-            continue;
-        }
-
-        let imported_name = import.name.rsplit('\\').next().unwrap_or(&import.name);
-
-        let matches = match &import.alias {
-            Some(alias) => alias == name,
-            None => imported_name == name,
-        };
-
-        if matches {
-            return import.name.clone();
-        }
-    }
-
-    if name.contains('\\') {
-        return match namespace {
-            Some(namespace) if !namespace.is_empty() => {
-                format!("{namespace}\\{name}")
-            }
-            _ => name.to_string(),
-        };
-    }
-
-    match namespace {
-        Some(namespace) if !namespace.is_empty() => {
-            format!("{namespace}\\{name}")
-        }
-        _ => name.to_string(),
+/// Collects the member side of `->`, `?->` and `::`. A bare identifier is a
+/// method/property name, not a symbol; anything else is a dynamic expression.
+fn collect_member_name(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Reference>) {
+    if !matches!(expr.kind, ExprKind::Identifier(_)) {
+        collect_expr(expr, context, references);
     }
 }
 
 fn collect_function_name(expr: &Expr, context: &AnalysisContext, references: &mut Vec<Reference>) {
-    if let ExprKind::Identifier(name) = &expr.kind {
-        references.push(Reference {
-            name: resolve_function_name(name, context.namespace, context.imports),
-            span: expr.span,
-            kind: ReferenceKind::FunctionName,
-        });
+    match &expr.kind {
+        ExprKind::Identifier(name) => {
+            references.extend(build_reference(
+                resolve_identifier(name, NameContext::Function, context),
+                expr.span,
+                ReferenceKind::FunctionName,
+            ));
+        }
+
+        // Dynamic callees, e.g. `Foo::{$method}()` or `$callable()`.
+        _ => collect_expr(expr, context, references),
     }
 }
 
-fn resolve_function_name(name: &str, namespace: Option<&str>, imports: &[Import]) -> String {
-    // Fully-qualified
-    // \Foo\bar -> Foo\bar
-    if let Some(name) = name.strip_prefix('\\') {
-        return name.to_string();
-    }
+/// Resolves a name written as a plain identifier (`Foo`, `Bar\Baz`, `\Foo`,
+/// `namespace\Foo`) against the current namespace and imports.
+fn resolve_identifier(
+    name: &str,
+    name_context: NameContext,
+    context: &AnalysisContext,
+) -> ResolvedName {
+    let (kind, rest) = if let Some(rest) = name.strip_prefix('\\') {
+        (NameKind::FullyQualified, rest)
+    } else if name
+        .get(..10)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("namespace\\"))
+    {
+        (NameKind::Relative, &name[10..])
+    } else if name.contains('\\') {
+        (NameKind::Qualified, name)
+    } else {
+        (NameKind::Unqualified, name)
+    };
 
-    // Imported function:
-    //
-    // use function Vendor\foo;
-    // foo() -> Vendor\foo
-    //
-    // use function Vendor\foo as bar;
-    // bar() -> Vendor\foo
-    for import in imports {
-        if !matches!(import.kind, ImportKind::Function) {
-            continue;
-        }
+    let parts: Vec<&str> = rest.split('\\').collect();
 
-        let imported_name = import.name.rsplit('\\').next().unwrap_or(&import.name);
-
-        let matches = match &import.alias {
-            Some(alias) => alias == name,
-            None => imported_name == name,
-        };
-
-        if matches {
-            return import.name.clone();
-        }
-    }
-
-    // Function imports will be handled once Import
-    // preserves the import kind.
-    match namespace {
-        Some(namespace) if !namespace.is_empty() => {
-            format!("{namespace}\\{name}")
-        }
-        _ => name.to_string(),
-    }
+    context.resolver.resolve(name_context, kind, &parts)
 }
 
-fn resolve_constant_name(name: &str, namespace: Option<&str>, imports: &[Import]) -> String {
-    if let Some(name) = name.strip_prefix('\\') {
-        return name.to_string();
-    }
+fn build_reference(resolved: ResolvedName, span: Span, kind: ReferenceKind) -> Option<Reference> {
+    let (name, fallback) = match resolved {
+        ResolvedName::Fqn(name) => (name, None),
 
-    // An imported constant is only matched when the identifier
-    // itself is the imported name/alias.
-    if !name.contains('\\') {
-        for import in imports {
-            if !matches!(import.kind, ImportKind::Constant) {
-                continue;
-            }
+        // Unqualified functions/constants: PHP tries the namespaced name
+        // first, then falls back to the global one at runtime.
+        ResolvedName::Fallback { namespaced, global } => (namespaced, Some(global)),
 
-            let imported_name = import.name.rsplit('\\').next().unwrap_or(&import.name);
+        // self/static/parent and error-recovery names aren't symbols.
+        ResolvedName::Special(_) | ResolvedName::Error => return None,
+    };
 
-            let matches = match &import.alias {
-                Some(alias) => alias == name,
-                None => imported_name == name,
-            };
-
-            if matches {
-                return import.name.clone();
-            }
-        }
-    }
-
-    match namespace {
-        Some(namespace) if !namespace.is_empty() => {
-            format!("{namespace}\\{name}")
-        }
-        _ => name.to_string(),
-    }
+    Some(Reference {
+        name,
+        fallback,
+        span,
+        kind,
+    })
 }
 
 fn collect_stmt(stmt: &Stmt, context: &AnalysisContext, references: &mut Vec<Reference>) {
     match &stmt.kind {
+        StmtKind::Class(class) => {
+            collect_class(class, context, references);
+        }
+
+        StmtKind::Interface(interface) => {
+            collect_interface(interface, context, references);
+        }
+
+        StmtKind::Trait(trait_decl) => {
+            collect_trait(trait_decl, context, references);
+        }
+
+        StmtKind::Enum(enum_decl) => {
+            collect_enum(enum_decl, context, references);
+        }
+
+        StmtKind::Function(function) => {
+            collect_function(function, context, references);
+        }
+
+        StmtKind::Const(items) => {
+            for item in items.iter() {
+                collect_attributes(&item.attributes, context, references);
+                collect_expr(&item.value, context, references);
+            }
+        }
+
+        StmtKind::StaticVar(vars) => {
+            for var in vars.iter() {
+                if let Some(default) = &var.default {
+                    collect_expr(default, context, references);
+                }
+            }
+        }
+
+        StmtKind::Declare(declare) => {
+            if let Some(body) = &declare.body {
+                collect_stmt(body.as_ref(), context, references);
+            }
+        }
+
         StmtKind::Switch(switch_stat) => {
             collect_expr(&switch_stat.expr, context, references);
 
@@ -917,6 +1028,8 @@ fn collect_if(if_stmt: &IfStmt, context: &AnalysisContext, references: &mut Vec<
 }
 
 fn collect_class(class: &ClassDecl, context: &AnalysisContext, references: &mut Vec<Reference>) {
+    collect_attributes(&class.attributes, context, references);
+
     if let Some(parent) = &class.extends {
         collect_class_name(parent, context, references);
     }
@@ -935,13 +1048,11 @@ fn collect_class_name(name: &Name, context: &AnalysisContext, references: &mut V
         .resolver
         .resolve_owned_name(name, NameContext::Class);
 
-    if let ResolvedName::Fqn(resolved_name) = resolved {
-        references.push(Reference {
-            name: resolved_name,
-            span: name.span,
-            kind: ReferenceKind::ClassName,
-        });
-    }
+    references.extend(build_reference(
+        resolved,
+        name.span,
+        ReferenceKind::ClassName,
+    ));
 }
 
 fn collect_class_member(
@@ -973,6 +1084,8 @@ fn collect_class_const(
     context: &AnalysisContext,
     references: &mut Vec<Reference>,
 ) {
+    collect_attributes(&class_const.attributes, context, references);
+
     if let Some(type_hint) = &class_const.type_hint {
         collect_type_hint(type_hint, context, references);
     }
@@ -985,6 +1098,8 @@ fn collect_property(
     context: &AnalysisContext,
     references: &mut Vec<Reference>,
 ) {
+    collect_attributes(&property.attributes, context, references);
+
     if let Some(type_hint) = &property.type_hint {
         collect_type_hint(type_hint, context, references);
     }
@@ -992,6 +1107,8 @@ fn collect_property(
     if let Some(default) = &property.default {
         collect_expr(default, context, references);
     }
+
+    collect_property_hooks(&property.hooks, context, references);
 }
 
 fn collect_interface(
@@ -999,6 +1116,8 @@ fn collect_interface(
     context: &AnalysisContext,
     references: &mut Vec<Reference>,
 ) {
+    collect_attributes(&interface.attributes, context, references);
+
     for parent in interface.extends.iter() {
         collect_class_name(parent, context, references);
     }
@@ -1013,6 +1132,8 @@ fn collect_trait(
     context: &AnalysisContext,
     references: &mut Vec<Reference>,
 ) {
+    collect_attributes(&trait_decl.attributes, context, references);
+
     for member in trait_decl.body.members.iter() {
         collect_class_member(member, context, references);
     }
@@ -1029,6 +1150,8 @@ fn collect_trait_use(
 }
 
 fn collect_enum(enum_decl: &EnumDecl, context: &AnalysisContext, references: &mut Vec<Reference>) {
+    collect_attributes(&enum_decl.attributes, context, references);
+
     for interface in enum_decl.implements.iter() {
         collect_class_name(interface, context, references);
     }
@@ -1043,14 +1166,16 @@ fn collect_enum(enum_decl: &EnumDecl, context: &AnalysisContext, references: &mu
                 collect_trait_use(trait_use, context, references);
             }
 
-            EnumMemberKind::ClassConst(_) => {
-                // Constants may contain class references through their
-                // values. We'll handle those when we add constant
-                // expression traversal.
+            EnumMemberKind::ClassConst(class_const) => {
+                collect_class_const(class_const, context, references);
             }
 
-            EnumMemberKind::Case(_) => {
-                // Enum case declarations don't introduce class references.
+            EnumMemberKind::Case(case) => {
+                collect_attributes(&case.attributes, context, references);
+
+                if let Some(value) = &case.value {
+                    collect_expr(value, context, references);
+                }
             }
         }
     }
@@ -1061,15 +1186,8 @@ fn collect_function(
     context: &AnalysisContext,
     references: &mut Vec<Reference>,
 ) {
-    for param in function.params.iter() {
-        if let Some(type_hint) = &param.type_hint {
-            collect_type_hint(type_hint, context, references);
-        }
-
-        if let Some(default) = &param.default {
-            collect_expr(default, context, references);
-        }
-    }
+    collect_attributes(&function.attributes, context, references);
+    collect_params(&function.params, context, references);
 
     if let Some(return_type) = &function.return_type {
         collect_type_hint(return_type, context, references);
@@ -1081,11 +1199,8 @@ fn collect_function(
 }
 
 fn collect_method(method: &MethodDecl, context: &AnalysisContext, references: &mut Vec<Reference>) {
-    for param in method.params.iter() {
-        if let Some(type_hint) = &param.type_hint {
-            collect_type_hint(type_hint, context, references);
-        }
-    }
+    collect_attributes(&method.attributes, context, references);
+    collect_params(&method.params, context, references);
 
     if let Some(return_type) = &method.return_type {
         collect_type_hint(return_type, context, references);
@@ -1109,13 +1224,11 @@ fn collect_type_hint(
                 .resolver
                 .resolve_owned_name(name, NameContext::Class);
 
-            if let ResolvedName::Fqn(resolved_name) = resolved {
-                references.push(Reference {
-                    name: resolved_name,
-                    span: name.span,
-                    kind: ReferenceKind::ClassName,
-                });
-            }
+            references.extend(build_reference(
+                resolved,
+                name.span,
+                ReferenceKind::ClassName,
+            ));
         }
 
         TypeHintKind::Keyword(_, _) => {}
@@ -1633,7 +1746,10 @@ class Example extends SomeClass
         assert!(matches!(references[0].kind, ReferenceKind::ClassName));
 
         assert_eq!(references[1].name, "Foo\\Example::VALUE");
-        assert!(matches!(references[1].kind, ReferenceKind::ConstantName));
+        assert!(matches!(
+            references[1].kind,
+            ReferenceKind::ClassConstantName
+        ));
     }
 
     #[test]
@@ -1659,6 +1775,812 @@ class Example extends SomeClass
         assert!(matches!(references[0].kind, ReferenceKind::ClassName));
 
         assert_eq!(references[1].name, "Vendor\\Bar::VALUE");
-        assert!(matches!(references[1].kind, ReferenceKind::ConstantName));
+        assert!(matches!(
+            references[1].kind,
+            ReferenceKind::ClassConstantName
+        ));
+    }
+
+    fn reference_names(analysis: &FileAnalysis) -> Vec<&str> {
+        analysis.namespaces[0]
+            .references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn ignores_method_and_property_names() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            function test($o): void
+            {
+                $o->method();
+                $o?->other();
+                $a = $o->prop;
+                $b = $o?->nullable;
+                $c = $o->method(...);
+            }
+            "#,
+        );
+
+        assert!(reference_names(&analysis).is_empty());
+    }
+
+    #[test]
+    fn collects_instanceof_class_once() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use Vendor\Bar;
+
+            function test($x): void
+            {
+                $a = $x instanceof Bar;
+            }
+            "#,
+        );
+
+        let references = &analysis.namespaces[0].references;
+
+        assert_eq!(references.len(), 1);
+        assert_eq!(references[0].name, "Vendor\\Bar");
+        assert!(matches!(references[0].kind, ReferenceKind::ClassName));
+    }
+
+    #[test]
+    fn resolves_qualified_names_through_class_imports() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use Vendor\Bar;
+
+            function test(): void
+            {
+                $a = new Bar\Nested();
+                Bar\helper();
+                $b = Bar\VALUE;
+            }
+            "#,
+        );
+
+        assert_eq!(
+            reference_names(&analysis),
+            [
+                "Vendor\\Bar\\Nested",
+                "Vendor\\Bar\\helper",
+                "Vendor\\Bar\\VALUE"
+            ]
+        );
+    }
+
+    #[test]
+    fn resolves_class_imports_case_insensitively() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use Vendor\{Baz, Qux as Q};
+
+            function test(): void
+            {
+                $a = new baz();
+                $b = new q();
+            }
+            "#,
+        );
+
+        assert_eq!(reference_names(&analysis), ["Vendor\\Baz", "Vendor\\Qux"]);
+    }
+
+    #[test]
+    fn ignores_special_class_names() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            class Example
+            {
+                public function test(): void
+                {
+                    $a = new self();
+                    $b = new static();
+                    $c = self::VALUE;
+                    parent::test();
+                }
+            }
+            "#,
+        );
+
+        assert!(reference_names(&analysis).is_empty());
+    }
+
+    #[test]
+    fn records_global_fallback_for_unqualified_functions_and_constants() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use function Vendor\helper;
+            use const Vendor\VALUE;
+
+            function test(): void
+            {
+                strlen('a');
+                $a = PHP_EOL;
+                helper();
+                $b = VALUE;
+                Bar\baz();
+                \Global\thing();
+            }
+            "#,
+        );
+
+        let references = &analysis.namespaces[0].references;
+
+        let pairs: Vec<(&str, Option<&str>)> = references
+            .iter()
+            .map(|reference| (reference.name.as_str(), reference.fallback.as_deref()))
+            .collect();
+
+        assert_eq!(
+            pairs,
+            [
+                ("Foo\\strlen", Some("strlen")),
+                ("Foo\\PHP_EOL", Some("PHP_EOL")),
+                ("Vendor\\helper", None),
+                ("Vendor\\VALUE", None),
+                ("Foo\\Bar\\baz", None),
+                ("Global\\thing", None),
+            ]
+        );
+    }
+
+    #[test]
+    fn no_fallback_in_global_namespace() {
+        let analysis = analyse_php(
+            r#"<?php
+            function test(): void
+            {
+                strlen(PHP_EOL);
+            }
+            "#,
+        );
+
+        let references = &analysis.namespaces[0].references;
+
+        assert_eq!(references.len(), 2);
+        assert_eq!(references[0].name, "strlen");
+        assert!(references[0].fallback.is_none());
+        assert_eq!(references[1].name, "PHP_EOL");
+        assert!(references[1].fallback.is_none());
+    }
+
+    #[test]
+    fn class_keyword_is_not_a_constant() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use Vendor\Bar;
+
+            function test(): void
+            {
+                $a = Bar::class;
+                $b = Bar::CLASS;
+            }
+            "#,
+        );
+
+        let references = &analysis.namespaces[0].references;
+
+        assert_eq!(references.len(), 2);
+
+        for reference in references {
+            assert_eq!(reference.name, "Vendor\\Bar");
+            assert!(matches!(reference.kind, ReferenceKind::ClassName));
+        }
+    }
+
+    fn symbols(analysis: &FileAnalysis) -> Vec<(&str, &SymbolKind)> {
+        analysis.namespaces[0]
+            .symbols
+            .iter()
+            .map(|symbol| (symbol.name.as_str(), &symbol.kind))
+            .collect()
+    }
+
+    #[test]
+    fn collects_guarded_declarations() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            if (!function_exists('Foo\\guarded_fn')) {
+                function guarded_fn() {}
+            }
+
+            if (!class_exists('Foo\\Guarded')) {
+                class Guarded {}
+            } elseif (true) {
+                interface ElseIfInterface {}
+            } else {
+                trait ElseTrait {}
+            }
+            "#,
+        );
+
+        let symbols = symbols(&analysis);
+
+        assert_eq!(symbols.len(), 4);
+        assert_eq!(symbols[0].0, "Foo\\guarded_fn");
+        assert!(matches!(symbols[0].1, SymbolKind::Function));
+        assert_eq!(symbols[1].0, "Foo\\Guarded");
+        assert!(matches!(symbols[1].1, SymbolKind::Class));
+        assert_eq!(symbols[2].0, "Foo\\ElseIfInterface");
+        assert!(matches!(symbols[2].1, SymbolKind::Interface));
+        assert_eq!(symbols[3].0, "Foo\\ElseTrait");
+        assert!(matches!(symbols[3].1, SymbolKind::Trait));
+    }
+
+    #[test]
+    fn collects_declarations_in_try_and_blocks() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            try {
+                class InTry {}
+            } catch (\Exception $e) {
+                class InCatch {}
+            } finally {
+                class InFinally {}
+            }
+
+            {
+                enum InBlock {}
+            }
+            "#,
+        );
+
+        let names: Vec<&str> = symbols(&analysis).iter().map(|(name, _)| *name).collect();
+
+        assert_eq!(
+            names,
+            [
+                "Foo\\InTry",
+                "Foo\\InCatch",
+                "Foo\\InFinally",
+                "Foo\\InBlock"
+            ]
+        );
+    }
+
+    #[test]
+    fn collects_nested_declarations_in_function_bodies() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            function outer()
+            {
+                function inner() {}
+
+                class InnerClass {}
+            }
+            "#,
+        );
+
+        let names: Vec<&str> = symbols(&analysis).iter().map(|(name, _)| *name).collect();
+
+        assert_eq!(names, ["Foo\\outer", "Foo\\inner", "Foo\\InnerClass"]);
+    }
+
+    #[test]
+    fn collects_const_declarations() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            const A = 1, B = 2;
+            "#,
+        );
+
+        let symbols = symbols(&analysis);
+
+        assert_eq!(symbols.len(), 2);
+        assert_eq!(symbols[0].0, "Foo\\A");
+        assert!(matches!(symbols[0].1, SymbolKind::Constant));
+        assert_eq!(symbols[1].0, "Foo\\B");
+        assert!(matches!(symbols[1].1, SymbolKind::Constant));
+    }
+
+    #[test]
+    fn collects_define_calls_without_namespacing_them() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            define('GLOBAL_CONST', 1);
+            \define('Vendor\\NS_CONST', 2);
+            define('\\Leading', 3);
+
+            if (!defined('GUARDED')) {
+                define('GUARDED', 4);
+            }
+
+            define($dynamic, 5);
+            "#,
+        );
+
+        let names: Vec<&str> = symbols(&analysis).iter().map(|(name, _)| *name).collect();
+
+        assert_eq!(
+            names,
+            ["GLOBAL_CONST", "Vendor\\NS_CONST", "Leading", "GUARDED"]
+        );
+    }
+
+    #[test]
+    fn collects_declarations_in_global_namespace() {
+        let analysis = analyse_php(
+            r#"<?php
+            if (!class_exists('Plain')) {
+                class Plain {}
+            }
+
+            const TOP = 1;
+            "#,
+        );
+
+        let names: Vec<&str> = symbols(&analysis).iter().map(|(name, _)| *name).collect();
+
+        assert_eq!(names, ["Plain", "TOP"]);
+    }
+
+    #[test]
+    fn collects_references_from_top_level_code() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use Vendor\Bar;
+
+            $a = new Bar();
+            $b = new TopLevel();
+            Bar::run(new InArgs());
+            $c = fn(Hint $h) => new InArrow();
+            "#,
+        );
+
+        let names = reference_names(&analysis);
+
+        assert!(names.contains(&"Vendor\\Bar"));
+        assert!(names.contains(&"Foo\\TopLevel"));
+        assert!(names.contains(&"Foo\\InArrow"));
+    }
+
+    #[test]
+    fn collects_references_from_guarded_and_nested_declarations() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            if (!class_exists('Guarded')) {
+                class Guarded extends GuardedParent {}
+            }
+
+            function outer()
+            {
+                function inner(Nested $n) {}
+
+                class InnerClass extends InnerParent {}
+            }
+            "#,
+        );
+
+        let names = reference_names(&analysis);
+
+        assert!(names.contains(&"Foo\\GuardedParent"));
+        assert!(names.contains(&"Foo\\Nested"));
+        assert!(names.contains(&"Foo\\InnerParent"));
+    }
+
+    #[test]
+    fn collects_references_from_const_and_static_values() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            const A = Other::VALUE;
+
+            function test()
+            {
+                static $s = new InStatic();
+            }
+            "#,
+        );
+
+        let names = reference_names(&analysis);
+
+        assert!(names.contains(&"Foo\\Other"));
+        assert!(names.contains(&"Foo\\Other::VALUE"));
+        assert!(names.contains(&"Foo\\InStatic"));
+    }
+
+    #[test]
+    fn does_not_collect_references_from_use_statements() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use Vendor\Bar;
+            use function Vendor\helper;
+            "#,
+        );
+
+        assert!(reference_names(&analysis).is_empty());
+    }
+
+    #[test]
+    fn collects_static_call_arguments_and_dynamic_members() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use Vendor\Bar;
+
+            function test($method): void
+            {
+                Bar::call(new InArgs());
+                Bar::{$method}(new InDynArgs());
+                Bar::$method(new InVarArgs());
+            }
+            "#,
+        );
+
+        assert_eq!(
+            reference_names(&analysis),
+            [
+                "Vendor\\Bar",
+                "Foo\\InArgs",
+                "Vendor\\Bar",
+                "Foo\\InDynArgs",
+                "Vendor\\Bar",
+                "Foo\\InVarArgs"
+            ]
+        );
+    }
+
+    #[test]
+    fn collects_method_parameter_defaults() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            class Example
+            {
+                public function run($a = new InDefault(), $b = Other::VALUE) {}
+
+                public function __construct(private $c = new InPromoted()) {}
+            }
+            "#,
+        );
+
+        let names = reference_names(&analysis);
+
+        assert!(names.contains(&"Foo\\InDefault"));
+        assert!(names.contains(&"Foo\\Other"));
+        assert!(names.contains(&"Foo\\Other::VALUE"));
+        assert!(names.contains(&"Foo\\InPromoted"));
+    }
+
+    #[test]
+    fn collects_enum_constant_and_case_values() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            enum Status: string
+            {
+                case Active = Config::ACTIVE;
+                case Plain = 'plain';
+
+                const DEFAULT = Other::VALUE;
+            }
+            "#,
+        );
+
+        assert_eq!(
+            reference_names(&analysis),
+            [
+                "Foo\\Config",
+                "Foo\\Config::ACTIVE",
+                "Foo\\Other",
+                "Foo\\Other::VALUE"
+            ]
+        );
+    }
+
+    #[test]
+    fn analyses_braced_namespaces_separately() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace One {
+                use Vendor\Bar;
+
+                class A extends Bar {}
+            }
+
+            namespace Two {
+                class B extends Bar {}
+            }
+            "#,
+        );
+
+        assert_eq!(analysis.namespaces.len(), 2);
+
+        let one = &analysis.namespaces[0];
+        assert_eq!(one.namespace.as_deref(), Some("One"));
+        assert_eq!(one.imports.len(), 1);
+        assert_eq!(one.symbols[0].name, "One\\A");
+        assert_eq!(one.references[0].name, "Vendor\\Bar");
+
+        // The import from `One` must not leak into `Two`.
+        let two = &analysis.namespaces[1];
+        assert_eq!(two.namespace.as_deref(), Some("Two"));
+        assert!(two.imports.is_empty());
+        assert_eq!(two.symbols[0].name, "Two\\B");
+        assert_eq!(two.references[0].name, "Two\\Bar");
+    }
+
+    #[test]
+    fn analyses_multiple_simple_namespaces_separately() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace One;
+
+            use Vendor\Bar;
+
+            class A extends Bar {}
+
+            namespace Two;
+
+            class B extends Bar {}
+            "#,
+        );
+
+        assert_eq!(analysis.namespaces.len(), 2);
+
+        let one = &analysis.namespaces[0];
+        assert_eq!(one.namespace.as_deref(), Some("One"));
+        assert_eq!(one.symbols[0].name, "One\\A");
+        assert_eq!(one.references[0].name, "Vendor\\Bar");
+
+        let two = &analysis.namespaces[1];
+        assert_eq!(two.namespace.as_deref(), Some("Two"));
+        assert!(two.imports.is_empty());
+        assert_eq!(two.symbols[0].name, "Two\\B");
+        assert_eq!(two.references[0].name, "Two\\Bar");
+    }
+
+    #[test]
+    fn analyses_global_braced_namespace() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace {
+                class Plain extends Base {}
+
+                function helper() {}
+            }
+
+            namespace Named {
+                class Other {}
+            }
+            "#,
+        );
+
+        assert_eq!(analysis.namespaces.len(), 2);
+
+        let global = &analysis.namespaces[0];
+        assert_eq!(global.namespace, None);
+        assert_eq!(global.symbols[0].name, "Plain");
+        assert_eq!(global.symbols[1].name, "helper");
+        assert_eq!(global.references[0].name, "Base");
+
+        let named = &analysis.namespaces[1];
+        assert_eq!(named.namespace.as_deref(), Some("Named"));
+        assert_eq!(named.symbols[0].name, "Named\\Other");
+    }
+
+    #[test]
+    fn analyses_nested_namespace_names() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Vendor\Package\Sub;
+
+            class Example extends Sibling {}
+            "#,
+        );
+
+        assert_eq!(analysis.namespaces.len(), 1);
+        assert_eq!(
+            analysis.namespaces[0].namespace.as_deref(),
+            Some("Vendor\\Package\\Sub")
+        );
+        assert_eq!(
+            analysis.namespaces[0].symbols[0].name,
+            "Vendor\\Package\\Sub\\Example"
+        );
+        assert_eq!(
+            analysis.namespaces[0].references[0].name,
+            "Vendor\\Package\\Sub\\Sibling"
+        );
+    }
+
+    #[test]
+    fn declare_before_namespace_does_not_add_an_empty_entry() {
+        let analysis = analyse_php(
+            r#"<?php
+            declare(strict_types=1);
+
+            namespace Foo;
+
+            class Example {}
+            "#,
+        );
+
+        assert_eq!(analysis.namespaces.len(), 1);
+        assert_eq!(analysis.namespaces[0].namespace.as_deref(), Some("Foo"));
+    }
+
+    #[test]
+    fn analyses_file_without_namespace() {
+        let analysis = analyse_php(
+            r#"<?php
+            use Vendor\Bar;
+
+            class Example extends Bar {}
+            "#,
+        );
+
+        assert_eq!(analysis.namespaces.len(), 1);
+        assert_eq!(analysis.namespaces[0].namespace, None);
+        assert_eq!(analysis.namespaces[0].symbols[0].name, "Example");
+        assert_eq!(analysis.namespaces[0].references[0].name, "Vendor\\Bar");
+    }
+
+    #[test]
+    fn analyses_empty_file() {
+        let analysis = analyse_php("<?php\n");
+
+        assert!(analysis.namespaces.is_empty());
+    }
+
+    #[test]
+    fn collects_attribute_class_and_arguments() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            use Vendor\Route;
+
+            #[Route('/x', handler: Handler::class), Plain]
+            class Example {}
+            "#,
+        );
+
+        assert_eq!(
+            reference_names(&analysis),
+            ["Vendor\\Route", "Foo\\Handler", "Foo\\Plain"]
+        );
+    }
+
+    #[test]
+    fn collects_attributes_on_every_declaration_kind() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            #[OnInterface]
+            interface I {}
+
+            #[OnTrait]
+            trait T {}
+
+            #[OnEnum]
+            enum E {
+                #[OnCase]
+                case A;
+
+                #[OnEnumConst]
+                const K = 1;
+            }
+
+            #[OnFunction]
+            function f(#[OnParam] $p) {}
+
+            #[OnConst]
+            const C = 1;
+
+            class Example {
+                #[OnConstant]
+                const X = 1;
+
+                #[OnProperty]
+                public $prop;
+
+                #[OnMethod]
+                public function m(#[OnMethodParam] $p) {}
+
+                public function __construct(#[OnPromoted] private $q) {}
+            }
+
+            $a = #[OnClosure] function (#[OnClosureParam] $p) {};
+            $b = #[OnArrow] fn(#[OnArrowParam] $p) => 1;
+            $c = new #[OnAnon] class {};
+            "#,
+        );
+
+        let names = reference_names(&analysis);
+
+        for expected in [
+            "OnInterface",
+            "OnTrait",
+            "OnEnum",
+            "OnCase",
+            "OnEnumConst",
+            "OnFunction",
+            "OnParam",
+            "OnConst",
+            "OnConstant",
+            "OnProperty",
+            "OnMethod",
+            "OnMethodParam",
+            "OnPromoted",
+            "OnClosure",
+            "OnClosureParam",
+            "OnArrow",
+            "OnArrowParam",
+            "OnAnon",
+        ] {
+            let qualified = format!("Foo\\{expected}");
+
+            assert!(
+                names.contains(&qualified.as_str()),
+                "missing attribute reference {qualified}; got {names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn collects_property_hook_references() {
+        let analysis = analyse_php(
+            r#"<?php
+            namespace Foo;
+
+            class Example {
+                public string $name {
+                    #[OnHook]
+                    get => Formatter::format($this->name);
+
+                    set(Value $value) {
+                        $this->name = new InHookBody();
+                    }
+                }
+            }
+            "#,
+        );
+
+        let names = reference_names(&analysis);
+
+        assert!(names.contains(&"Foo\\OnHook"));
+        assert!(names.contains(&"Foo\\Formatter"));
+        assert!(names.contains(&"Foo\\Value"));
+        assert!(names.contains(&"Foo\\InHookBody"));
     }
 }
