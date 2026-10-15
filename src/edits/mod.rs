@@ -99,12 +99,18 @@ pub fn plan(
 
     let workers = parallel::worker_count(config.parallel, to_plan.len());
 
+    let stage = crate::progress::stage("Planning", to_plan.len());
+
     let planned: Vec<(&ScannedFile, Result<file::Planned, String>)> = parallel::pool(workers)
         .install(|| {
             to_plan
                 .par_iter()
                 .map(|(scanned, keeps_namespaces)| {
-                    (*scanned, plan_one(&names, scanned, *keeps_namespaces))
+                    let planned = plan_one(&names, scanned, *keeps_namespaces);
+
+                    stage.tick();
+
+                    (*scanned, planned)
                 })
                 .collect()
         });

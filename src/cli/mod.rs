@@ -1,6 +1,7 @@
 //! The command line interface.
 
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -23,6 +24,10 @@ use crate::symbols::{self, SymbolTable};
     arg_required_else_help = true
 )]
 struct Cli {
+    /// Show no progress and no summary, only warnings and errors.
+    #[arg(short, long, global = true)]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -194,10 +199,30 @@ struct Overrides {
     parallel: ParallelArgs,
 }
 
+/// `--quiet`: the summaries are left out.
+static QUIET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Prints a summary line to stderr, unless `--quiet`.
+macro_rules! summary {
+    ($($argument:tt)*) => {
+        if !QUIET.load(std::sync::atomic::Ordering::Relaxed) {
+            eprintln!($($argument)*);
+        }
+    };
+}
+
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub fn run() -> ExitCode {
     let cli = Cli::parse();
+
+    // Progress is drawn only for a person watching: not when stderr is piped or
+    // logged.
+    if !cli.quiet && std::io::stderr().is_terminal() {
+        crate::progress::enable();
+    }
+
+    QUIET.store(cli.quiet, std::sync::atomic::Ordering::Relaxed);
 
     match execute(cli.command) {
         Ok(()) => ExitCode::SUCCESS,
@@ -380,13 +405,28 @@ fn analyse_project(args: &ScanArgs) -> Result<Analysed> {
         config.parallel = parallel;
     }
 
-    let set = packages::enumerate_packages(&config)?;
-    let mut files = packages::enumerate_files(&config, &set)?;
+    let set = {
+        let _step = crate::progress::spinner("Packages");
+
+        packages::enumerate_packages(&config)?
+    };
+
+    let mut files = {
+        let _step = crate::progress::spinner("Listing files");
+
+        packages::enumerate_files(&config, &set)?
+    };
+
     let table = symbols::scan(&config, &files);
 
-    rename::exclude_namespaces_from_copy(&config, &mut files, &table);
+    let rename = {
+        let _step = crate::progress::spinner("Renaming");
 
-    let rename = rename::plan(&config, &set, &files, &table);
+        rename::exclude_namespaces_from_copy(&config, &mut files, &table);
+
+        rename::plan(&config, &set, &files, &table)
+    };
+
     let edits = edits::plan(&config, &files, &table, &rename);
 
     report_problems(&set);
@@ -419,7 +459,7 @@ fn render_diff(args: &DiffArgs) -> Result<String> {
         });
     }
 
-    eprintln!(
+    summary!(
         "{} files to change with {} edits; {} unchanged; {} skipped",
         edit_plan.files.len(),
         edit_plan.edit_count(),
@@ -468,19 +508,35 @@ fn prefix(args: &PrefixArgs) -> Result {
         &output::Options::new(&analysed.config, args.dry_run, output::today()),
     )?;
 
-    for warning in &report.warnings {
-        eprintln!("warning: {warning}");
-    }
+    // "<file> was copied as it is: <reason>" is grouped by the reason.
+    let warnings: Vec<(String, String)> = report
+        .warnings
+        .iter()
+        .map(
+            |warning| match warning.split_once(" was copied as it is: ") {
+                Some((file, reason)) => (file.to_string(), format!("copied as it is: {reason}")),
+                None => (String::new(), warning.clone()),
+            },
+        )
+        .collect();
+
+    print_grouped_warnings(
+        warnings
+            .iter()
+            .map(|(file, message)| (file.as_str(), message.as_str())),
+    );
 
     let verb = if args.dry_run { "Would write" } else { "Wrote" };
 
-    eprintln!(
+    summary!(
         "{verb} {} files to {} ({} modified)",
-        report.written, analysed.config.target_directory, report.modified
+        report.written,
+        analysed.config.target_directory,
+        report.modified
     );
 
     if !report.autoloader.is_empty() {
-        eprintln!(
+        summary!(
             "{verb} {} with {} classes",
             report.autoloader.join(" and "),
             report.classmap_entries
@@ -488,7 +544,7 @@ fn prefix(args: &PrefixArgs) -> Result {
     }
 
     if report.deleted_files > 0 {
-        eprintln!(
+        summary!(
             "{} {} files from {}{}",
             if args.dry_run {
                 "Would delete"
@@ -516,10 +572,47 @@ fn prefix(args: &PrefixArgs) -> Result {
 }
 
 fn report_scan_warnings(table: &SymbolTable) {
-    for warning in &table.warnings {
-        eprintln!("warning: {}: {}", warning.file, warning.message);
+    print_grouped_warnings(
+        table
+            .warnings
+            .iter()
+            .map(|warning| (warning.file.as_str(), warning.message.as_str())),
+    );
+}
+
+/// Prints `(file, message)` warnings, one line for each message that many
+/// files share: a package of charset tables isn't a screenful.
+fn print_grouped_warnings<'a>(warnings: impl Iterator<Item = (&'a str, &'a str)>) {
+    let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
+
+    for (file, message) in warnings {
+        match groups.iter_mut().find(|(existing, _)| *existing == message) {
+            Some((_, files)) => files.push(file),
+            None => groups.push((message, vec![file])),
+        }
+    }
+
+    for (message, files) in groups {
+        if files.len() <= SHOWN_INDIVIDUALLY {
+            for file in files {
+                if file.is_empty() {
+                    eprintln!("warning: {message}");
+                } else {
+                    eprintln!("warning: {file}: {message}");
+                }
+            }
+        } else {
+            eprintln!(
+                "warning: {} files: {message} (such as {})",
+                files.len(),
+                files[..SHOWN_INDIVIDUALLY].join(", ")
+            );
+        }
     }
 }
+
+/// How many files with the same warning are listed before they are counted.
+const SHOWN_INDIVIDUALLY: usize = 3;
 
 /// Packages that were required but left out, or found with a problem, go to
 /// stderr so the JSON on stdout stays clean.

@@ -91,6 +91,8 @@ pub(super) fn run(
 
     let workers = parallel::worker_count(input.config.parallel, jobs.len());
 
+    let stage = crate::progress::stage("Writing", jobs.len());
+
     let results: Vec<Result<bool, OutputError>> = parallel::pool(workers).install(|| {
         jobs.par_iter()
             .map(|job| {
@@ -105,7 +107,11 @@ pub(super) fn run(
                         .then_some(options.date.as_str()),
                 };
 
-                write_file(job, &header, options.dry_run, in_place)
+                let result = write_file(job, &header, options.dry_run, in_place);
+
+                stage.tick();
+
+                result
             })
             .collect()
     });

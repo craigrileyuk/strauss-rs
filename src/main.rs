@@ -6,6 +6,7 @@ mod output;
 mod packages;
 mod parallel;
 mod php_pattern;
+mod progress;
 mod rename;
 mod symbols;
 

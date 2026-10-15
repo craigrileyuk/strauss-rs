@@ -146,3 +146,53 @@ fn fails_clearly_when_the_packages_are_not_installed() {
     );
     assert!(!project.join("vendor-prefixed").exists());
 }
+
+#[test]
+fn quiet_leaves_out_the_summary() {
+    let project = copy_of("edit-fixture", "quiet");
+    let output = prefix(&project, &["--quiet"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(stderr(&output), "");
+    assert!(project.join("vendor-prefixed/autoload.php").exists());
+}
+
+#[test]
+fn nothing_is_drawn_when_stderr_is_not_a_terminal() {
+    let project = copy_of("edit-fixture", "not-a-terminal");
+    let text = stderr(&prefix(&project, &[]));
+
+    // The summary only: no progress bars or the escape codes that draw them.
+    assert!(!text.contains('\u{1b}'), "{text:?}");
+    assert!(!text.contains("Analysing"), "{text:?}");
+    assert_eq!(text.lines().count(), 2, "{text}");
+}
+
+#[test]
+fn many_files_with_the_same_problem_are_one_warning() {
+    let project = copy_of("edit-fixture", "grouped-warnings");
+
+    for name in ["A", "B", "C", "D", "E"] {
+        fs::write(
+            project.join(format!("vendor/acme/core/src/Latin{name}.php")),
+            b"<?php\nnamespace Acme\\Core;\n$s = '\xe9';\n",
+        )
+        .unwrap();
+    }
+
+    let text = stderr(&prefix(&project, &[]));
+    let warnings: Vec<&str> = text
+        .lines()
+        .filter(|line| line.starts_with("warning:"))
+        .collect();
+
+    assert_eq!(warnings.len(), 2, "{text}");
+    assert!(
+        warnings[0].starts_with("warning: 5 files: the file is not valid UTF-8"),
+        "{text}"
+    );
+    assert!(
+        warnings[1].starts_with("warning: 5 files: copied as it is: it is not valid UTF-8"),
+        "{text}"
+    );
+}
