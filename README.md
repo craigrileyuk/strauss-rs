@@ -5,9 +5,27 @@
   </picture>
 </p>
 
-A laser-fast Rust take on [Strauss](https://github.com/BrianHenryIE/strauss): it prefixes the namespaces and global symbols of a Wordpress plugin or theme's Composer dependencies, so they can't clash with other plugins shipping the same libraries.
+## Contents
 
-It's a single binary with no PHP required to run it.
+- [Getting started](#getting-started)
+  - [1. Install the script](#1-install-the-script)
+  - [2. Create a `strauss.json`](#2-create-a-straussjson)
+  - [3. Run it from Composer](#3-run-it-from-composer)
+- [Why Use Strauss?](#why-use-strauss)
+- [Advanced usage](#advanced-usage)
+  - [Previewing changes](#previewing-changes)
+  - [Migrating from Strauss PHP](#migrating-from-strauss-php)
+  - [Updating your own code](#updating-your-own-code)
+  - [The autoloader](#the-autoloader)
+  - [Deleting the originals](#deleting-the-originals)
+  - [Commands](#commands)
+  - [Installer settings](#installer-settings)
+
+A super-fast Rust take on [Strauss](https://github.com/BrianHenryIE/strauss). Built for Wordpress plugins/themes where you cannot control the project dependencies centrally.
+
+Prefix the namespaces and global symbols inside a Composer project so they cannot clash with other parts of your project using the same libraries.
+
+Strauss-RS is a single binary with no PHP or other dependencies required to run it.
 
 ## Getting started
 
@@ -56,6 +74,38 @@ Add to your `composer.json`:
 
 Now `composer install` and `composer update` prefix your dependencies into `vendor-prefixed/` as their last step.
 
+## Why Use Strauss?
+
+Say that two plugins bundle different versions of the same library. Wordpress loads both into one PHP process, so whichever autoloader registers first wins and the other plugin gets the wrong version.
+
+```
+wp-content/plugins/
+├── plugin-a/
+│   ├── plugin-a.php
+│   └── vendor/
+│       └── guzzlehttp/guzzle/     # v6.5 - declares GuzzleHttp\Client
+└── plugin-b/
+    ├── plugin-b.php
+    └── vendor/
+        └── guzzlehttp/guzzle/     # v7.8 - also declares GuzzleHttp\Client
+```
+
+After running Strauss-RS in each plugin, every copy lives under its own namespace:
+
+```
+wp-content/plugins/
+├── plugin-a/
+│   ├── plugin-a.php
+│   └── vendor-prefixed/
+│       └── guzzlehttp/guzzle/     # Acme\PluginA\Vendor\GuzzleHttp\Client (v6.5)
+└── plugin-b/
+    ├── plugin-b.php
+    └── vendor-prefixed/
+        └── guzzlehttp/guzzle/     # Acme\PluginB\Vendor\GuzzleHttp\Client (v7.8)
+```
+
+No more clashes
+
 ## Advanced usage
 
 ### Previewing changes
@@ -70,11 +120,12 @@ Any arguments after the script name are passed to the binary. Running the script
 
 ### Migrating from Strauss PHP
 
-strauss-rs does **not** read `extra.strauss` in `composer.json`. All of your options **must** be moved into a dedicated `strauss.json` next to `composer.json`. Anything left under `extra.strauss` is silently ignored, so without the move you get inferred defaults instead of your settings, and your files are prefixed differently from before.
+Strauss-RS does **not** read `extra.strauss` in `composer.json`. All of your options **must** be moved into a dedicated `strauss.json` next to `composer.json`. Anything left under `extra.strauss` is silently ignored, so without the move you get inferred defaults instead of your settings, and your files are prefixed differently from before.
 
 Take the contents of the `extra.strauss` object and make them the whole of `strauss.json`, without the `extra` and `strauss` wrapper. The option names and values are the same. From:
 
 ```json
+// composer.json
 {
   "name": "acme/plugin",
   "extra": {
@@ -90,6 +141,7 @@ Take the contents of the `extra.strauss` object and make them the whole of `stra
 to a `strauss.json` containing:
 
 ```json
+// strauss.json
 {
   "target_directory": "vendor-prefixed",
   "namespace_prefix": "Acme\\Plugin\\Vendor",
@@ -100,7 +152,7 @@ to a `strauss.json` containing:
 Then delete `extra.strauss` from `composer.json` so there is one source of truth. Things to know:
 
 - Unknown keys are an error, so a typo or an unsupported option is reported rather than ignored.
-- Mozart's legacy keys (`dep_directory`, `dep_namespace`, `exclude_packages` and so on) and the `extra.mozart` fallback are not supported. Use the current option names.
+- Mozart's (the project Strauss was originally forked from) legacy keys (`dep_directory`, `dep_namespace`, `exclude_packages` and so on) and the `extra.mozart` fallback are not supported. Use the current option names.
 - If you leave out `classmap_prefix`, the one inferred from your package name ends in an underscore (`Acme_My_Plugin_`). Strauss PHP leaves the underscore off. Set it explicitly if you need your existing class names to stay the same.
 - Your Composer scripts should call `strauss-rs` (see [Run it from Composer](#3-run-it-from-composer)) instead of `vendor/bin/strauss`.
 
@@ -133,8 +185,6 @@ Set `"optimize_autoloader": false` to also fall back to each package's PSR-4 dir
 
 1. removes the deleted packages from `vendor/composer/installed.json`, and
 2. runs `composer dump-autoload --no-scripts` to regenerate Composer's autoloader from what is left.
-
-`delete_vendor_files` is deprecated and kept only so existing Strauss configs still load. It deletes just the files that were copied, where `delete_vendor_packages` removes the whole package directory when everything in it was copied, so prefer `delete_vendor_packages`. Composer is updated the same way for either.
 
 If `composer` isn't on your `PATH`, set `STRAUSS_RS_COMPOSER` to the command to run. If it can't be run, `prefix` warns and tells you what to do by hand. Nothing is deleted in a `--dry-run`.
 

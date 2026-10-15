@@ -2,6 +2,9 @@
 name = "strauss-rs"
 version = "0.1.0"
 edition = "2024"
+authors = ["Evo Mark Ltd <github@evomark.co.uk>"]
+license-file = "LICENCE"
+repository = "https://github.com/evo-mark/strauss-rs"
 
 [dependencies]
 php-rs-parser = "0.21"

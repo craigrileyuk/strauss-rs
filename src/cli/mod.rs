@@ -20,7 +20,7 @@ use crate::symbols::{self, SymbolTable};
 #[command(
     name = "strauss-rs",
     version,
-    about = "Prefix the namespaces of a WordPress plugin or theme's dependencies",
+    about = "Prefix the namespaces of a Wordpress plugin or theme's dependencies",
     arg_required_else_help = true
 )]
 struct Cli {
