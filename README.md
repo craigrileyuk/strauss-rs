@@ -5,6 +5,12 @@
   </picture>
 </p>
 
+A super-fast Rust take on [Strauss](https://github.com/BrianHenryIE/strauss). Built for Wordpress plugins/themes where you cannot control the project dependencies centrally.
+
+Prefix the namespaces and global symbols inside a Composer project so they cannot clash with other parts of your project using the same libraries.
+
+Strauss-RS is a single binary with no PHP or other dependencies required to run it.
+
 ## Contents
 
 - [Getting started](#getting-started)
@@ -20,12 +26,6 @@
   - [Deleting the originals](#deleting-the-originals)
   - [Commands](#commands)
   - [Installer settings](#installer-settings)
-
-A super-fast Rust take on [Strauss](https://github.com/BrianHenryIE/strauss). Built for Wordpress plugins/themes where you cannot control the project dependencies centrally.
-
-Prefix the namespaces and global symbols inside a Composer project so they cannot clash with other parts of your project using the same libraries.
-
-Strauss-RS is a single binary with no PHP or other dependencies required to run it.
 
 ## Getting started
 
