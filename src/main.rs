@@ -2,6 +2,8 @@ use std::env;
 use std::fs;
 
 mod analyser;
+mod config;
+mod php_pattern;
 
 use php_rs_parser::parse;
 
@@ -18,7 +20,7 @@ fn main() {
         }
     }
 
-    let analysis = analyser::analyse(&result.program);
+    let analysis = analyser::analyse(&source, &result.program);
 
     println!("{analysis:#?}");
 }

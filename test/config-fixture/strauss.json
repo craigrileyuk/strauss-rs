@@ -1,0 +1,15 @@
+{
+    "$schema": "../../strauss.schema.json",
+    "target_directory": "lib/prefixed/",
+    "namespace_prefix": "Acme\\Plugin\\Vendor",
+    "constant_prefix": "ACME_",
+    "packages": [
+        "league/flysystem",
+        "psr/log"
+    ],
+    "exclude_from_prefix": {
+        "namespaces": [
+            "Psr\\Log"
+        ]
+    }
+}

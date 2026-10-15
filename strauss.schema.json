@@ -1,0 +1,277 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "strauss.json",
+    "description": "Configuration for strauss-rs. The options are those of PHP Strauss' `extra.strauss` object in composer.json, without the wrapper.",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "The location of this schema, for editor completion."
+        },
+        "target_directory": {
+            "type": "string",
+            "minLength": 1,
+            "default": "vendor-prefixed",
+            "description": "The directory, relative to the project, the prefixed files are copied to. Leading and trailing slashes are ignored. Must not contain `..`."
+        },
+        "namespace_prefix": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The string to prefix each namespace with, e.g. `Acme\\Plugin\\Vendor`. Inferred from the first `psr-4` (then `psr-0`) autoload namespace, or the package name, in composer.json."
+        },
+        "classmap_prefix": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z_\\u0080-\\uffff][A-Za-z0-9_\\u0080-\\uffff]*$",
+            "description": "The string to prefix class names in the global namespace with, e.g. `Acme_Plugin_`. Inferred from composer.json."
+        },
+        "constant_prefix": {
+            "type": "string",
+            "pattern": "^([A-Za-z_\\u0080-\\uffff][A-Za-z0-9_\\u0080-\\uffff]*)?$",
+            "description": "The string to prefix constants declared with `define()` with, e.g. `ACME_`. If empty or absent, constants are not prefixed."
+        },
+        "functions_prefix": {
+            "$ref": "#/definitions/functionsPrefix"
+        },
+        "function_prefix": {
+            "$ref": "#/definitions/functionsPrefix",
+            "deprecated": true,
+            "description": "Alias of `functions_prefix`."
+        },
+        "packages": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "description": "The packages to process. If absent or empty, the `require` list in composer.json is used."
+        },
+        "update_call_sites": {
+            "description": "Update the project's own files where they use prefixed symbols. `true` uses the files and directories in the project's `autoload`; an array lists them explicitly; `false` (the default) updates nothing.",
+            "default": false,
+            "oneOf": [
+                {
+                    "type": "boolean"
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            ]
+        },
+        "include_root_autoload": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include the project's own `autoload` section when creating the Strauss autoloader."
+        },
+        "optimize_autoloader": {
+            "type": "boolean",
+            "default": true,
+            "description": "Force an optimised, classmap-authoritative autoloader."
+        },
+        "parallel": {
+            "description": "How many worker processes analyse files. `true` or `0`: one per spare CPU. `false` or `1`: a single process. A number greater than 1: at most that many.",
+            "default": true,
+            "oneOf": [
+                {
+                    "type": "boolean"
+                },
+                {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            ]
+        },
+        "classmap_output": {
+            "type": "boolean",
+            "description": "Create `autoload-classmap.php` and `autoload.php`. Inferred: `false` when `target_directory` is in the project's `autoload`, otherwise `true`."
+        },
+        "override_autoload": {
+            "type": "object",
+            "description": "Autoload settings, keyed by package name, that replace those in the packages' own composer.json.",
+            "additionalProperties": {
+                "$ref": "#/definitions/autoload"
+            }
+        },
+        "exclude_from_copy": {
+            "$ref": "#/definitions/exclusions",
+            "description": "Packages, namespaces and files that are not copied to `target_directory`."
+        },
+        "exclude_from_prefix": {
+            "$ref": "#/definitions/exclusions",
+            "description": "Symbols defined in these packages, namespaces and files are not renamed. Where they are used is still updated."
+        },
+        "exclude_files_from_update": {
+            "$ref": "#/definitions/exclusions",
+            "description": "No changes are made in files matching these packages, namespaces and file patterns."
+        },
+        "exclude_constants": {
+            "description": "Like `exclude_from_prefix`, but applies only to constants.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "packages": {
+                    "$ref": "#/definitions/packageList"
+                },
+                "namespaces": {
+                    "$ref": "#/definitions/namespaceList"
+                },
+                "file_patterns": {
+                    "$ref": "#/definitions/patternList"
+                },
+                "constants": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_\\u0080-\\uffff][A-Za-z0-9_\\u0080-\\uffff]*$"
+                    },
+                    "description": "Constant names that are never prefixed, e.g. `WP_PLUGIN_DIR` and `ABSPATH`."
+                }
+            }
+        },
+        "exclude_from_string_rename": {
+            "description": "Symbols that are renamed where used in code, but left unchanged where the name appears inside a string.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "functions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_\\u0080-\\uffff][A-Za-z0-9_\\u0080-\\uffff]*$"
+                    },
+                    "description": "Global function names to leave unchanged inside strings such as `$array['value']`."
+                }
+            }
+        },
+        "namespace_replacement_patterns": {
+            "type": "object",
+            "description": "Patterns to use instead of prefixing with `namespace_prefix`, in priority order: the first to change a namespace wins. A key is literal text unless it starts and ends with the same delimiter character (`~^Acme\\\\(.*)~`), in which case it is a regular expression. A value can refer to capture groups with `$1`.",
+            "additionalProperties": {
+                "type": "string"
+            }
+        },
+        "delete_vendor_packages": {
+            "type": "boolean",
+            "default": false,
+            "description": "Delete the packages' vendor directories after processing."
+        },
+        "delete_vendor_files": {
+            "type": "boolean",
+            "default": false,
+            "description": "Delete the files copied from the packages' vendor directories after processing."
+        },
+        "exclude_git_files": {
+            "type": "boolean",
+            "default": true,
+            "description": "Skip files that would not be in the package's distributed archive: the `.git` directory, `.gitignore`d files and `export-ignore` files."
+        },
+        "include_modified_date": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include a date in the header written to modified files."
+        },
+        "include_author": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include the author in the header written to modified files."
+        }
+    },
+    "definitions": {
+        "functionsPrefix": {
+            "description": "The string to prefix global functions with. Defaults to the lower-cased `classmap_prefix`. `false` or an empty string disables function prefixing.",
+            "oneOf": [
+                {
+                    "type": "string",
+                    "pattern": "^([A-Za-z_\\u0080-\\uffff][A-Za-z0-9_\\u0080-\\uffff]*)?$"
+                },
+                {
+                    "const": false
+                }
+            ]
+        },
+        "exclusions": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "packages": {
+                    "$ref": "#/definitions/packageList"
+                },
+                "namespaces": {
+                    "$ref": "#/definitions/namespaceList"
+                },
+                "file_patterns": {
+                    "$ref": "#/definitions/patternList"
+                }
+            }
+        },
+        "packageList": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "description": "Package names, e.g. `league/flysystem`."
+        },
+        "namespaceList": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "description": "Namespaces, matched exactly (not their parents or children). Leading and trailing backslashes are ignored."
+        },
+        "patternList": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "description": "Regular expressions matched against file paths relative to the vendor directory. Wrapped in `#` delimiters unless they start and end with the same delimiter character."
+        },
+        "autoload": {
+            "type": "object",
+            "description": "An `autoload` object, as in composer.json.",
+            "properties": {
+                "psr-4": {
+                    "$ref": "#/definitions/namespaceMap"
+                },
+                "psr-0": {
+                    "$ref": "#/definitions/namespaceMap"
+                },
+                "classmap": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "namespaceMap": {
+            "type": "object",
+            "additionalProperties": {
+                "oneOf": [
+                    {
+                        "type": "string"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        }
+    }
+}
