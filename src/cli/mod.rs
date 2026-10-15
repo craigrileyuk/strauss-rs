@@ -5,16 +5,17 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use php_rs_parser::parse;
 
 use crate::analyser;
+use crate::commands::{self, explain};
 use crate::config::{Config, Parallel, UpdateCallSites};
 use crate::edits::{self, EditPlan};
 use crate::output;
 use crate::packages::{self, PackageFile, PackageSet};
 use crate::rename::{self, PlannedSymbol};
-use crate::symbols::{self, SymbolTable};
+use crate::symbols::{self, SymbolKind, SymbolTable};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -68,6 +69,30 @@ enum Command {
     /// every symbol, which for a large project is a lot; `summary` has the
     /// counts.
     Plan(PlanArgs),
+
+    /// Explain what happens to one symbol, and why.
+    ///
+    /// Shows whether a class, function, constant or namespace is renamed, what
+    /// to, and which setting decided it. Symbols that PHP or an
+    /// `exclude_presets` preset provides are explained too, even when no package
+    /// declares them. Exits with an error if nothing matches.
+    Explain(ExplainArgs),
+
+    /// Write a starting `strauss.json`.
+    ///
+    /// Works out the prefixes from `composer.json`. Dependencies go under
+    /// `<your namespace>\Vendor` so they can't meet your own classes. Refuses to
+    /// replace an existing `strauss.json` without `--force`.
+    Init(InitArgs),
+
+    /// Move PHP Strauss' `extra.strauss` from `composer.json` into
+    /// `strauss.json`.
+    ///
+    /// Checks the options are ones strauss-rs knows before writing anything,
+    /// then removes `extra.strauss` so there is one source of truth. Keeps
+    /// existing class names by setting `classmap_prefix` where PHP Strauss
+    /// would have inferred it differently.
+    Migrate(MigrateArgs),
 
     /// Show the changes that would be made to the files, as a diff.
     ///
@@ -210,6 +235,104 @@ struct PrefixArgs {
     json: bool,
 }
 
+/// The kinds of symbol `explain --kind` can narrow to.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum KindArg {
+    Namespace,
+    Class,
+    Interface,
+    Trait,
+    Enum,
+    Function,
+    Constant,
+}
+
+impl From<KindArg> for SymbolKind {
+    fn from(kind: KindArg) -> SymbolKind {
+        match kind {
+            KindArg::Namespace => SymbolKind::Namespace,
+            KindArg::Class => SymbolKind::Class,
+            KindArg::Interface => SymbolKind::Interface,
+            KindArg::Trait => SymbolKind::Trait,
+            KindArg::Enum => SymbolKind::Enum,
+            KindArg::Function => SymbolKind::Function,
+            KindArg::Constant => SymbolKind::Constant,
+        }
+    }
+}
+
+/// A project, and the symbol to explain.
+#[derive(Debug, Args)]
+struct ExplainArgs {
+    #[command(flatten)]
+    scan: ScanArgs,
+
+    /// The symbol's full name, such as `GuzzleHttp\Client`, `my_function` or
+    /// `ABSPATH`. A leading backslash is ignored.
+    symbol: String,
+
+    /// Only consider this kind of symbol, for a name that is more than one.
+    #[arg(long, value_enum)]
+    kind: Option<KindArg>,
+
+    /// Print the explanation as JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+/// A project, and what to write.
+#[derive(Debug, Args)]
+struct InitArgs {
+    #[command(flatten)]
+    project: ProjectArgs,
+
+    /// Replace `strauss.json` if there is one.
+    #[arg(long)]
+    force: bool,
+
+    /// Show what would be written, and write nothing.
+    #[arg(long)]
+    dry_run: bool,
+
+    /// The `namespace_prefix` to write, instead of one worked out from
+    /// `composer.json`.
+    #[arg(long, value_name = "PREFIX")]
+    namespace_prefix: Option<String>,
+
+    /// The `classmap_prefix` to write, instead of one worked out from
+    /// `composer.json`.
+    #[arg(long, value_name = "PREFIX")]
+    classmap_prefix: Option<String>,
+
+    /// The `target_directory` to write, if not `vendor-prefixed`.
+    #[arg(long, value_name = "DIR")]
+    target_directory: Option<String>,
+
+    /// Add scripts to `composer.json` that run `prefix` after `composer install`
+    /// and `composer update`, without asking.
+    #[arg(long, conflicts_with = "no_composer_scripts")]
+    composer_scripts: bool,
+
+    /// Don't add the Composer scripts, and don't ask.
+    #[arg(long)]
+    no_composer_scripts: bool,
+}
+
+/// A project, and whether to write the move.
+#[derive(Debug, Args)]
+struct MigrateArgs {
+    #[command(flatten)]
+    project: ProjectArgs,
+
+    /// Replace `strauss.json` if there is one.
+    #[arg(long)]
+    force: bool,
+
+    /// Show what would be written, and write nothing.
+    #[arg(long)]
+    dry_run: bool,
+}
+
 /// A project, and options that override its configuration.
 #[derive(Debug, Args)]
 struct ConfigArgs {
@@ -316,6 +439,12 @@ fn execute(command: Command) -> Result {
 
             Ok(())
         }
+
+        Command::Explain(args) => explain_symbol(&args),
+
+        Command::Init(args) => init(&args),
+
+        Command::Migrate(args) => migrate(&args),
 
         Command::Prefix(args) => prefix(&args),
 
@@ -429,6 +558,151 @@ fn render_plan(args: &PlanArgs) -> Result<String> {
         files_excluded_from_prefix: &plan.files_excluded_from_prefix,
         symbols: selected,
     })?)
+}
+
+fn explain_symbol(args: &ExplainArgs) -> Result {
+    let mut config = load_config(&args.scan.project)?;
+
+    if let Some(parallel) = args.scan.parallel.parallel {
+        config.parallel = parallel;
+    }
+
+    let set = packages::enumerate_packages(&config)?;
+    let mut files = packages::enumerate_files(&config, &set)?;
+    let table = symbols::scan(&config, &files);
+
+    rename::exclude_namespaces_from_copy(&config, &mut files, &table);
+
+    let plan = rename::plan(&config, &set, &files, &table);
+
+    report_problems(&set);
+    report_scan_warnings(&table);
+
+    let explanation = explain::explain(
+        &config,
+        &table,
+        &plan,
+        &args.symbol,
+        args.kind.map(SymbolKind::from),
+    )
+    .map_err(|not_found| not_found.message)?;
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&explanation)?);
+    } else {
+        println!("{}", explain::render(&explanation));
+    }
+
+    Ok(())
+}
+
+/// The project directory, which has to exist for `init` and `migrate` to
+/// write into it.
+fn project_directory(args: &ProjectArgs) -> Result<PathBuf> {
+    let directory = fs::canonicalize(&args.project_dir).map_err(|error| {
+        format!(
+            "could not open project directory {}: {error}",
+            args.project_dir.display()
+        )
+    })?;
+
+    if !directory.is_dir() {
+        return Err(format!("{} is not a directory", directory.display()).into());
+    }
+
+    Ok(directory)
+}
+
+/// Asks a yes or no question on stderr, when a person is there to answer.
+/// `false` when stdin isn't a terminal.
+fn confirm(question: &str) -> bool {
+    use std::io::Write;
+
+    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+        return false;
+    }
+
+    eprint!("{question} [y/N] ");
+    let _ = std::io::stderr().flush();
+
+    let mut answer = String::new();
+
+    std::io::stdin().read_line(&mut answer).is_ok()
+        && matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+fn init(args: &InitArgs) -> Result {
+    let project_dir = project_directory(&args.project)?;
+
+    let composer_scripts = if args.composer_scripts {
+        true
+    } else if args.no_composer_scripts || args.dry_run {
+        false
+    } else {
+        confirm(&format!(
+            "Add scripts to composer.json that run `{}` after install and update?",
+            commands::composer_file::PREFIX_COMMAND
+        ))
+    };
+
+    let outcome = commands::init::run(&commands::init::Options {
+        project_dir,
+        force: args.force,
+        dry_run: args.dry_run,
+        namespace_prefix: args.namespace_prefix.clone(),
+        classmap_prefix: args.classmap_prefix.clone(),
+        target_directory: args.target_directory.clone(),
+        composer_scripts,
+    })?;
+
+    if args.dry_run {
+        print!("{}", outcome.strauss_json);
+        summary!("Would write strauss.json");
+    } else {
+        summary!("Wrote strauss.json");
+    }
+
+    for change in &outcome.composer_changes {
+        summary!(
+            "{} composer.json: {change}",
+            if args.dry_run {
+                "Would change"
+            } else {
+                "Changed"
+            }
+        );
+    }
+
+    // Notes are advice, so they are left out with the other summaries.
+    for note in &outcome.notes {
+        summary!("note: {note}");
+    }
+
+    Ok(())
+}
+
+fn migrate(args: &MigrateArgs) -> Result {
+    let project_dir = project_directory(&args.project)?;
+
+    let outcome = commands::migrate::run(&commands::migrate::Options {
+        project_dir,
+        force: args.force,
+        dry_run: args.dry_run,
+    })?;
+
+    if args.dry_run {
+        print!("{}", outcome.strauss_json);
+        summary!("Would write strauss.json and remove extra.strauss from composer.json");
+    } else {
+        summary!("Wrote strauss.json and removed extra.strauss from composer.json");
+    }
+
+    for note in &outcome.notes {
+        // These change what happens next, so they are warnings.
+        eprintln!("warning: {note}");
+    }
+
+    Ok(())
 }
 
 /// Everything worked out before anything is written.

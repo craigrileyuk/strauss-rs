@@ -54,6 +54,22 @@ pub(super) fn infer_classmap_prefix(
         .filter(|prefix| prefix != "_")
 }
 
+/// The `classmap_prefix` PHP Strauss infers, when it differs from
+/// [`infer_classmap_prefix`]: for a prefix from the package name it leaves off
+/// the trailing underscore (`Acme_My_Plugin`, not `Acme_My_Plugin_`).
+pub(super) fn infer_php_strauss_classmap_prefix(composer: &ComposerJson) -> Option<String> {
+    if first_autoload_namespace(composer).is_some() {
+        return None;
+    }
+
+    let name = package_name(composer)?;
+
+    Some(capitalise_words(
+        &words_with_separators(name).replace('/', "_"),
+    ))
+    .filter(|prefix| !prefix.ends_with('_'))
+}
+
 fn ending_in_underscore(mut prefix: String) -> String {
     if !prefix.ends_with('_') {
         prefix.push('_');

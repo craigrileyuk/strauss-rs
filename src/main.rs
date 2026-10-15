@@ -1,5 +1,6 @@
 mod analyser;
 mod cli;
+mod commands;
 mod config;
 mod edits;
 mod output;

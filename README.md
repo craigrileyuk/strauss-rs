@@ -14,19 +14,20 @@ Strauss-RS is a single binary with no PHP or other dependencies required to run 
 ## Contents
 
 - [Getting started](#getting-started)
-  - [1. Install the script](#1-install-the-script)
-  - [2. Create a `strauss.json`](#2-create-a-straussjson)
-  - [3. Run it from Composer](#3-run-it-from-composer)
+    - [1. Install the script](#1-install-the-script)
+    - [2. Create a `strauss.json`](#2-create-a-straussjson)
+    - [3. Run it from Composer](#3-run-it-from-composer)
 - [Why Use Strauss?](#why-use-strauss)
 - [Advanced usage](#advanced-usage)
-  - [Previewing changes](#previewing-changes)
-  - [Migrating from Strauss PHP](#migrating-from-strauss-php)
-  - [Updating your own code](#updating-your-own-code)
-  - [The autoloader](#the-autoloader)
-  - [Deleting the originals](#deleting-the-originals)
-  - [Presets](#presets)
-  - [Commands](#commands)
-  - [Installer settings](#installer-settings)
+    - [Previewing changes](#previewing-changes)
+    - [Explaining a symbol](#explaining-a-symbol)
+    - [Migrating from Strauss PHP](#migrating-from-strauss-php)
+    - [Updating your own code](#updating-your-own-code)
+    - [The autoloader](#the-autoloader)
+    - [Deleting the originals](#deleting-the-originals)
+    - [Presets](#presets)
+    - [Commands](#commands)
+    - [Installer settings](#installer-settings)
 
 ## Getting started
 
@@ -44,18 +45,20 @@ The script downloads the right release for your OS and CPU, checks its checksum,
 
 ### 2. Create a `strauss.json`
 
-Next to `composer.json`:
+Next to your folder's `composer.json` file, you should create a `strauss.json` file:
 
 ```json
 {
-  "$schema": "./bin/strauss.schema.json",
-  "namespace_prefix": "Acme\\Plugin\\Vendor",
-  "classmap_prefix": "Acme_Plugin_",
-  "include_autoloader": true
+	"$schema": "./bin/strauss.schema.json",
+	"namespace_prefix": "Acme\\Plugin\\Vendor",
+	"classmap_prefix": "Acme_Plugin_",
+	"include_autoloader": true
 }
 ```
 
-Everything is optional. Prefixes are inferred from `composer.json` when left out, and every package in `require` is processed. The schema gives your editor completion for all options. `include_autoloader` makes Composer's `vendor/autoload.php` load the prefixed packages, so your plugin needs no extra `require`.
+Alternatively, use `sh bin/strauss-rs.sh init` to automatically create one.
+
+Everything in this file is optional. Prefixes are inferred from `composer.json` when left out, and every package in your composer `require` block is processed. The schema gives your editor completion for all options. `include_autoloader` makes Composer's `vendor/autoload.php` load the prefixed packages, so your plugin needs no extra `require`.
 
 Coming from Strauss PHP? Your options must be moved here from `composer.json`; see [Migrating from Strauss PHP](#migrating-from-strauss-php).
 
@@ -65,11 +68,11 @@ Add to your `composer.json`:
 
 ```json
 {
-  "scripts": {
-    "prefix-namespaces": ["sh bin/strauss-rs.sh prefix"],
-    "post-install-cmd": ["@prefix-namespaces"],
-    "post-update-cmd": ["@prefix-namespaces"]
-  }
+	"scripts": {
+		"prefix-namespaces": ["sh bin/strauss-rs.sh prefix"],
+		"post-install-cmd": ["@prefix-namespaces"],
+		"post-update-cmd": ["@prefix-namespaces"]
+	}
 }
 ```
 
@@ -119,23 +122,63 @@ sh bin/strauss-rs.sh prefix           # copy to target_directory and write the a
 
 Any arguments after the script name are passed to the binary. Running the script with no arguments only installs or updates. `STRAUSS_RS_VERSION` pins a release; see [Installer settings](#installer-settings).
 
+### Explaining a symbol
+
+```sh
+sh bin/strauss-rs.sh explain 'GuzzleHttp\Client'
+```
+
+Says whether the symbol is renamed, what to, and which setting decided it, with what to change to get the other result:
+
+```
+class GuzzleHttp\Client
+  declared by  guzzlehttp/guzzle
+  in           guzzlehttp/guzzle/src/Client.php
+  autoloaded   yes
+  renamed to   Acme\Plugin\Vendor\GuzzleHttp\Client
+  because      it is autoloaded
+```
+
+Names are matched the way PHP does (case-insensitively, except for constants) and a leading backslash is ignored. Use `--kind` when one name is more than one thing, such as a class and a function, and `--json` for a machine-readable answer. Symbols that PHP or an [`exclude_presets`](#presets) preset provides are explained too, even if no package declares them. If nothing matches, the command fails and lists similar names.
+
+### Starting a new project
+
+`init` writes a `strauss.json` from your `composer.json`:
+
+```sh
+sh bin/strauss-rs.sh init
+```
+
+It works out `namespace_prefix` and `classmap_prefix` and turns on `include_autoloader`. Dependencies go under `<your namespace>\Vendor`, so they can't clash with your own classes. Override what it works out with `--namespace-prefix`, `--classmap-prefix` and `--target-directory`, and look first with `--dry-run`. It won't replace an existing `strauss.json` without `--force`.
+
+It can also add a `prefix-namespaces` script to `composer.json`, run from `post-install-cmd` and `post-update-cmd` (see [step 3](#3-run-it-from-composer)). It asks when run in a terminal; `--composer-scripts` and `--no-composer-scripts` answer for you. Your `composer.json` keeps its key order and indentation.
+
 ### Migrating from Strauss PHP
 
-Strauss-RS does **not** read `extra.strauss` in `composer.json`. All of your options **must** be moved into a dedicated `strauss.json` next to `composer.json`. Anything left under `extra.strauss` is silently ignored, so without the move you get inferred defaults instead of your settings, and your files are prefixed differently from before.
+`migrate` does what this section describes for you:
+
+```sh
+sh bin/strauss-rs.sh migrate --dry-run   # show the strauss.json it would write
+sh bin/strauss-rs.sh migrate
+```
+
+It moves `extra.strauss` into `strauss.json` and removes it from `composer.json` (other `extra` entries stay). Nothing is written if an option isn't one strauss-rs supports. Where PHP Strauss would have inferred a `classmap_prefix` differently, it sets that value explicitly so your class names don't change. It warns about scripts that still run `vendor/bin/strauss`, but doesn't edit them. `--force` replaces an existing `strauss.json`.
+
+To do it by hand instead: Strauss-RS does **not** read `extra.strauss` in `composer.json`. All of your options **must** be moved into a dedicated `strauss.json` next to `composer.json`. Anything left under `extra.strauss` is silently ignored, so without the move you get inferred defaults instead of your settings, and your files are prefixed differently from before.
 
 Take the contents of the `extra.strauss` object and make them the whole of `strauss.json`, without the `extra` and `strauss` wrapper. The option names and values are the same. From:
 
 ```json
 // composer.json
 {
-  "name": "acme/plugin",
-  "extra": {
-    "strauss": {
-      "target_directory": "vendor-prefixed",
-      "namespace_prefix": "Acme\\Plugin\\Vendor",
-      "classmap_prefix": "Acme_Plugin_"
-    }
-  }
+	"name": "acme/plugin",
+	"extra": {
+		"strauss": {
+			"target_directory": "vendor-prefixed",
+			"namespace_prefix": "Acme\\Plugin\\Vendor",
+			"classmap_prefix": "Acme_Plugin_"
+		}
+	}
 }
 ```
 
@@ -144,9 +187,9 @@ to a `strauss.json` containing:
 ```json
 // strauss.json
 {
-  "target_directory": "vendor-prefixed",
-  "namespace_prefix": "Acme\\Plugin\\Vendor",
-  "classmap_prefix": "Acme_Plugin_"
+	"target_directory": "vendor-prefixed",
+	"namespace_prefix": "Acme\\Plugin\\Vendor",
+	"classmap_prefix": "Acme_Plugin_"
 }
 ```
 
@@ -163,7 +206,7 @@ Your plugin's own files refer to the packages too. Set `update_call_sites` and `
 
 ```json
 {
-  "update_call_sites": true
+	"update_call_sites": true
 }
 ```
 
@@ -197,7 +240,7 @@ Some libraries declare symbols that the platform they run on already has, usuall
 
 ```json
 {
-  "exclude_presets": ["wordpress"]
+	"exclude_presets": ["wordpress"]
 }
 ```
 
@@ -215,6 +258,9 @@ The class and function lists are generated from [php-stubs/wordpress-stubs](http
 | `prefix`   | Copy packages to `target_directory`, rename symbols, write autoloader |
 | `diff`     | Show the changes `prefix` would make                                  |
 | `plan`     | Show which symbols would be renamed, and why others wouldn't          |
+| `explain`  | Explain what happens to one symbol, and why                           |
+| `init`     | Write a starting `strauss.json`                                       |
+| `migrate`  | Move `extra.strauss` from `composer.json` into `strauss.json`         |
 | `config`   | Print the resolved configuration as JSON                              |
 | `packages` | List the packages to process                                          |
 | `files`    | List the files of those packages                                      |

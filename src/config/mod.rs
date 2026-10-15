@@ -251,6 +251,15 @@ impl Config {
     }
 }
 
+/// The `classmap_prefix` PHP Strauss would infer from this `composer.json`, if
+/// it isn't the one strauss-rs infers. Setting it keeps class names as they
+/// were after moving from PHP Strauss.
+pub fn php_strauss_classmap_prefix(composer_json: &str) -> Option<String> {
+    let composer: ComposerJson = serde_json::from_str(composer_json).ok()?;
+
+    infer::infer_php_strauss_classmap_prefix(&composer)
+}
+
 fn read_optional(path: &Path) -> Result<Option<String>, ConfigError> {
     match fs::read_to_string(path) {
         Ok(contents) => Ok(Some(contents)),
