@@ -1,0 +1,12 @@
+{
+    "packages": [
+        {"name": "acme/core", "version": "1.0.0", "install-path": "../acme/core",
+         "autoload": {"psr-4": {"Acme\\Core\\": "src/"}}},
+        {"name": "acme/globals", "version": "1.0.0", "install-path": "../acme/globals",
+         "autoload": {"files": ["bootstrap.php"]}},
+        {"name": "acme/consumer", "version": "1.0.0", "install-path": "../acme/consumer",
+         "autoload": {"psr-4": {"Acme\\Consumer\\": "src/"}}},
+        {"name": "acme/keep", "version": "1.0.0", "install-path": "../acme/keep",
+         "autoload": {"psr-4": {"Acme\\Keep\\": "src/"}}}
+    ]
+}

@@ -1,0 +1,6 @@
+{
+    "packages": [
+        {"name": "acme/lib", "version": "1.0.0", "install-path": "../acme/lib",
+         "autoload": {"files": ["load.php"]}}
+    ]
+}

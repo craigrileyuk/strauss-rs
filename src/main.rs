@@ -1,6 +1,8 @@
 mod analyser;
 mod cli;
 mod config;
+mod edits;
+mod output;
 mod packages;
 mod parallel;
 mod php_pattern;

@@ -6,7 +6,7 @@ use php_ast::{
     Span,
     ast::NameKind,
     owned::{Expr, ExprKind},
-    resolve::{NameContext, ResolvedName},
+    resolve::{NameContext, NameResolver, ResolvedName},
 };
 
 /// Resolves a name written as a plain identifier (`Foo`, `Bar\Baz`, `\Foo`,
@@ -15,6 +15,19 @@ pub(super) fn resolve_identifier(
     name: &str,
     name_context: NameContext,
     context: &AnalysisContext,
+) -> ResolvedName {
+    resolve_written_name(context.resolver, name_context, name)
+}
+
+/// Resolves a name as it is written in code against the resolver's namespace
+/// and imports: `Foo`, `Bar\Baz`, `\Foo` or `namespace\Foo`.
+///
+/// This is how a name is resolved during analysis, and how a rewritten file's
+/// names can be checked afterwards.
+pub fn resolve_written_name(
+    resolver: &NameResolver,
+    name_context: NameContext,
+    name: &str,
 ) -> ResolvedName {
     let (kind, rest) = if let Some(rest) = name.strip_prefix('\\') {
         (NameKind::FullyQualified, rest)
@@ -31,7 +44,7 @@ pub(super) fn resolve_identifier(
 
     let parts: Vec<&str> = rest.split('\\').collect();
 
-    context.resolver.resolve(name_context, kind, &parts)
+    resolver.resolve(name_context, kind, &parts)
 }
 
 pub(super) fn build_reference(

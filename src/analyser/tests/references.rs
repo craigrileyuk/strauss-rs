@@ -205,3 +205,40 @@ fn collects_enum_constant_and_case_values() {
         ]
     );
 }
+
+#[test]
+fn collects_the_traits_named_in_trait_adaptations() {
+    let analysis = analyse_php(
+        r#"<?php
+            namespace Foo;
+
+            use Vendor\A;
+            use Vendor\B;
+
+            class User
+            {
+                use A, B, \Other\C {
+                    A::hello insteadof B, \Other\C;
+                    B::hello as protected hi;
+                    \Other\C::hello as other;
+                    hello as private;
+                }
+            }
+            "#,
+    );
+
+    // The trait list, then each rule; method names are not classes.
+    assert_eq!(
+        reference_names(&analysis),
+        [
+            "Vendor\\A",
+            "Vendor\\B",
+            "Other\\C",
+            "Vendor\\A",
+            "Vendor\\B",
+            "Other\\C",
+            "Vendor\\B",
+            "Other\\C",
+        ]
+    );
+}

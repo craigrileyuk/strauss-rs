@@ -52,6 +52,42 @@ pub(super) fn assign(config: &Config, packages: &PackageSet, entries: &mut [Plan
 
         apply(&mut entries[index], outcome);
     }
+
+    follow_namespaces(entries, &namespaces);
+}
+
+/// A symbol that isn't renamed for its own sake still moves if its namespace
+/// does: the namespace is rewritten in every file that declares it, and the
+/// symbol is in one of them. (PHP Strauss gets this from replacing a namespace
+/// as text wherever it is.) Symbols left alone because of where they are
+/// declared keep their reason; so does any whose namespace isn't renamed.
+fn follow_namespaces(
+    entries: &mut [PlannedSymbol],
+    namespaces: &HashMap<String, NamespaceOutcome>,
+) {
+    for entry in entries.iter_mut() {
+        let follows = !entry.rename
+            && !entry.is_global()
+            && entry.kind != SymbolKind::Namespace
+            && matches!(
+                entry.reason,
+                Reason::NotAutoloaded
+                    | Reason::ConstantExcluded
+                    | Reason::ConstantNamespaceExcluded(_)
+                    | Reason::ConstantPackageExcluded(_)
+                    | Reason::ConstantFileExcluded { .. }
+            );
+
+        if !follows {
+            continue;
+        }
+
+        if let Ok(replacement) = namespaced_replacement(entry, namespaces) {
+            entry.replacement = Some(replacement);
+            entry.rename = true;
+            entry.reason = Reason::FollowsNamespace;
+        }
+    }
 }
 
 /// The result of working out a name: the new name, or why there isn't one.
