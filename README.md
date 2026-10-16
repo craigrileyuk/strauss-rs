@@ -240,7 +240,7 @@ Some libraries declare symbols that the platform they run on already has, usuall
 
 ```json
 {
-  "exclude_presets": ["wordpress", "woocommerce", "wp-cli"]
+  "exclude_presets": ["wordpress", "php-constants"]
 }
 ```
 
@@ -249,13 +249,14 @@ Some libraries declare symbols that the platform they run on already has, usuall
 | `wordpress`   | Wordpress core's global classes (`WP_Error`, `wpdb`), functions (`add_action`) and constants (`ABSPATH`) | Yes           |
 | `woocommerce` | WooCommerce's global classes (`WC_Order`), functions (`wc_get_order`) and constants (`WC_ABSPATH`)        | No            |
 | `wp-cli`      | WP-CLI's global classes (`WP_CLI`, `WP_CLI_Command`, `Plugin_Command`) and constants (`WP_CLI`)           | No            |
+| `php-constants` | The constants PHP and its extensions define (`MB_CASE_TITLE`, `JSON_THROW_ON_ERROR`, `E_ALL`)          | No            |
 
 - Setting `exclude_presets` replaces the default, so list `wordpress` too if you want it alongside the others. `"exclude_presets": []` renames those symbols like any others.
 - Namespaced symbols are not included, so a bundled copy of something like `WpOrg\Requests` or `Automattic\WooCommerce\Client` is still prefixed.
-- PHP's own classes and functions are always left alone, whatever you set here.
+- PHP's own classes and functions are always left alone, whatever you set here. Its constants are not, because a package may mean to define one of its own: turn on `php-constants` if a polyfill (such as `symfony/polyfill-mbstring`) is renamed to `EVMKCORE_MB_CASE_TITLE` and PHP never defines that.
 - `strauss-rs symbols` lists what was left alone under `built_ins`, with `provided_by` set to `php` or the preset's name, and `strauss-rs explain` says why a particular symbol was left alone.
 
-The class and function lists are generated from [php-stubs/wordpress-stubs](https://github.com/php-stubs/wordpress-stubs) and [php-stubs/woocommerce-stubs](https://github.com/php-stubs/woocommerce-stubs) and [php-stubs/wp-cli-stubs](https://github.com/php-stubs/wp-cli-stubs) with `scripts/generate-presets.sh`. The stubs mostly don't declare constants, so those come from `scripts/wordpress-constants.txt`, `scripts/woocommerce-constants.txt` and `scripts/wp-cli-constants.txt`.
+The class and function lists are generated from [php-stubs/wordpress-stubs](https://github.com/php-stubs/wordpress-stubs) and [php-stubs/woocommerce-stubs](https://github.com/php-stubs/woocommerce-stubs) and [php-stubs/wp-cli-stubs](https://github.com/php-stubs/wp-cli-stubs) with `scripts/generate-presets.sh`. The stubs mostly don't declare constants, so those come from `scripts/wordpress-constants.txt`, `scripts/woocommerce-constants.txt` and `scripts/wp-cli-constants.txt`. The `php-constants` list comes from `scripts/generate-php-constants.sh`, which lists what the PHP on your `PATH` defines, plus `scripts/php-constants-extra.txt` for constants from extensions or PHP versions it doesn't have.
 
 ### Commands
 

@@ -230,3 +230,47 @@ fn leaves_out_what_wp_cli_provides_when_it_is_on() {
     assert!(table.get(SymbolKind::Class, "WP_CLI_Command").is_some());
     assert!(table.get(SymbolKind::Constant, "WP_CLI").is_some());
 }
+
+#[test]
+fn php_constants_are_recognised_and_case_sensitive() {
+    let php = PresetSymbols::get("php-constants").unwrap();
+
+    for name in [
+        "MB_CASE_TITLE",
+        "E_ALL",
+        "PHP_EOL",
+        "JSON_THROW_ON_ERROR",
+        "\\MB_CASE_UPPER",
+    ] {
+        assert!(php.is_constant(name), "{name}");
+    }
+
+    // From scripts/php-constants-extra.txt.
+    assert!(php.is_constant("UUID_TYPE_RANDOM"));
+    assert!(!php.is_constant("mb_case_title"));
+    assert!(!php.is_constant("ACME_OWN_CONSTANT"));
+    // Constants only: classes and functions are always handled as PHP's own.
+    assert!(!php.is_class_like("ArrayObject"));
+    assert!(!php.is_function("strlen"));
+}
+
+#[test]
+fn the_php_constants_preset_is_opt_in() {
+    let table = scan_presets(&["wordpress"]);
+
+    assert!(table.get(SymbolKind::Constant, "MB_CASE_TITLE").is_some());
+
+    let table = scan_presets(&["php-constants"]);
+
+    assert_eq!(
+        provided(&table, SymbolKind::Constant, "MB_CASE_TITLE").as_deref(),
+        Some("php-constants")
+    );
+    assert!(table.get(SymbolKind::Constant, "MB_CASE_TITLE").is_none());
+    // A constant of the package's own is still renamed.
+    assert!(
+        table
+            .get(SymbolKind::Constant, "ACME_OWN_CONSTANT")
+            .is_some()
+    );
+}

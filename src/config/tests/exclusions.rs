@@ -117,4 +117,8 @@ fn the_woocommerce_preset_is_opt_in() {
         strauss_only(r#"{"exclude_presets": ["WP-CLI"]}"#).exclude_presets,
         ["wp-cli"]
     );
+    assert_eq!(
+        strauss_only(r#"{"exclude_presets": ["PHP-Constants"]}"#).exclude_presets,
+        ["php-constants"]
+    );
 }

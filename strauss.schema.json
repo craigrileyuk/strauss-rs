@@ -137,12 +137,12 @@
             }
         },
         "exclude_presets": {
-            "description": "Sets of symbols that something other than PHP provides, which are never renamed. `wordpress` is Wordpress core's global classes, functions and constants, and `woocommerce` is WooCommerce's, and `wp-cli` is WP-CLI's, so a library's shim for them is left alone. Set to `[]` to rename them like any other symbol.",
+            "description": "Sets of symbols that something other than PHP provides, which are never renamed. `wordpress` is Wordpress core's global classes, functions and constants, and `woocommerce` is WooCommerce's, and `wp-cli` is WP-CLI's, so a library's shim for them is left alone. `php-constants` is the constants PHP and its extensions define (`MB_CASE_TITLE`, `JSON_THROW_ON_ERROR`), which polyfills declare for a PHP without them. Set to `[]` to rename them like any other symbol.",
             "type": "array",
             "uniqueItems": true,
             "default": ["wordpress"],
             "items": {
-                "enum": ["wordpress", "woocommerce", "wp-cli"]
+                "enum": ["wordpress", "woocommerce", "wp-cli", "php-constants"]
             }
         },
         "exclude_from_string_rename": {
