@@ -78,11 +78,11 @@ fn shows_what_is_renamed_and_why_not_the_rest() {
 fn counts_the_plan() {
     let report = json(&plan("test/rename-fixture", &[]));
 
-    assert_eq!(report["summary"]["symbols"], 43);
-    assert_eq!(report["summary"]["renamed"], 27);
-    assert_eq!(report["summary"]["by_kind"]["class"]["renamed"], 7);
-    assert_eq!(report["summary"]["reasons"]["autoloaded"], 23);
-    assert_eq!(report["symbols"].as_array().unwrap().len(), 43);
+    assert_eq!(report["summary"]["symbols"], 45);
+    assert_eq!(report["summary"]["renamed"], 29);
+    assert_eq!(report["summary"]["by_kind"]["class"]["renamed"], 8);
+    assert_eq!(report["summary"]["reasons"]["autoloaded"], 25);
+    assert_eq!(report["symbols"].as_array().unwrap().len(), 45);
 }
 
 #[test]
@@ -157,7 +157,7 @@ fn can_show_just_some_packages() {
     );
 
     // The counts are for the whole plan.
-    assert_eq!(report["summary"]["symbols"], 43);
+    assert_eq!(report["summary"]["symbols"], 45);
 }
 
 #[test]
