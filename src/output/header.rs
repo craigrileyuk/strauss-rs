@@ -6,7 +6,7 @@
 
 /// What PHP Strauss puts after "Modified"; kept so that its notes and this
 /// one look the same.
-const CREDIT: &str = "using {@see https://github.com/BrianHenryIE/strauss}.";
+const CREDIT: &str = "using {@see https://github.com/evo-mark/strauss-rs}.";
 
 pub struct Header<'a> {
     /// The package's licenses, for a comment made from scratch.

@@ -1,7 +1,7 @@
 use super::*;
 use crate::output::header::{Header, add_header, format_date};
 
-const CREDIT: &str = "{@see https://github.com/BrianHenryIE/strauss}";
+const CREDIT: &str = "{@see https://github.com/evo-mark/strauss-rs}";
 
 fn full<'a>(licenses: &'a [String]) -> Header<'a> {
     Header {

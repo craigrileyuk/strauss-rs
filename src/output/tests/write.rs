@@ -2,7 +2,7 @@ use super::*;
 use crate::output::autoload::dependency_order;
 use crate::packages::Package;
 
-const CREDIT: &str = "{@see https://github.com/BrianHenryIE/strauss}";
+const CREDIT: &str = "{@see https://github.com/evo-mark/strauss-rs}";
 
 #[test]
 fn every_copied_file_is_written_and_the_changed_ones_are_rewritten() {
