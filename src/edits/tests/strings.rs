@@ -135,11 +135,18 @@ $a = 'P\V\Acme\Core\VERSION';"#,
 }
 
 #[test]
-fn heredocs_and_comments_are_left_alone() {
-    let body =
-        "// Acme\\Core\\Client\n$a = <<<TXT\nAcme\\Core\\Client\nTXT;\n/* \\Acme\\Core\\Client */";
+fn heredocs_are_left_alone() {
+    let body = "$a = <<<TXT\nAcme\\Core\\Client\nTXT;\n$b = <<<'TXT'\n\\Acme\\Core\\Client\nTXT;";
 
     assert_eq!(rewritten(body), in_namespace(body));
+}
+
+#[test]
+fn names_in_comments_follow_the_rename() {
+    expect(
+        "// Acme\\Core\\Client\n# see \\Acme\\Core\\Sub\\Thing\n/* \\Acme\\Core\\Client */",
+        "// P\\V\\Acme\\Core\\Client\n# see \\P\\V\\Acme\\Core\\Sub\\Thing\n/* \\P\\V\\Acme\\Core\\Client */",
+    );
 }
 
 #[test]

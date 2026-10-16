@@ -37,6 +37,8 @@ pub enum EditKind {
     String,
     /// A class named in the type of a docblock tag.
     Docblock,
+    /// A name with a backslash in it, in the text of a comment or docblock.
+    Comment,
 }
 
 /// The edits for one file, ascending by position and not overlapping.

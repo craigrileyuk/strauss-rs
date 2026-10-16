@@ -18,7 +18,7 @@ use crate::analyser::{
 use crate::edits::context::{NewContext, NewImport};
 use crate::edits::model::{Edit, EditKind};
 use crate::edits::names::{Group, NameMap};
-use crate::edits::text::{doc_type_names, string_edits};
+use crate::edits::text::{comment_names, doc_type_names, string_edits};
 use crate::symbols::SymbolKind;
 
 pub(super) struct FileInput<'a> {
@@ -115,6 +115,7 @@ impl Segment<'_, '_> {
         self.plan_quoted_strings();
         self.plan_references(&context);
         self.plan_docblocks(&context);
+        self.plan_comments();
     }
 
     fn warn(&mut self, message: String) {
@@ -484,6 +485,57 @@ impl Segment<'_, '_> {
                     edit.kind = EditKind::Docblock;
                     self.planned.edits.push(edit);
                 }
+            }
+        }
+    }
+
+    // ---- comments ----
+
+    /// Names with a backslash in them in the text of comments and docblocks:
+    /// prose (`@deprecated Use \Acme\Core\Client instead`), examples, and the
+    /// lines of a tag's description. The types of tags are planned as code
+    /// (`plan_docblocks`), so a name that edit was made for is left to it. One
+    /// it found nothing to change in, such as `@see Acme\Core\Client` which is
+    /// relative to the namespace as written but meant in full, is read here.
+    fn plan_comments(&mut self) {
+        let planned: Vec<(u32, u32)> = self
+            .planned
+            .edits
+            .iter()
+            .map(|edit| (edit.start, edit.end))
+            .collect();
+
+        for region in &self.segment.regions {
+            if !matches!(region.kind, RegionKind::Comment | RegionKind::DocComment) {
+                continue;
+            }
+
+            for (start, end) in comment_names(&region.text) {
+                let span_start = region.span.start + start as u32;
+                let span_end = region.span.start + end as u32;
+
+                if planned.iter().any(|(planned_start, planned_end)| {
+                    span_start < *planned_end && *planned_start < span_end
+                }) {
+                    continue;
+                }
+
+                let written = &region.text[start..end];
+                let name = written.trim_start_matches('\\');
+                let new = self.names.new_text_name(name);
+
+                if new == name {
+                    continue;
+                }
+
+                let leading = &written[..written.len() - name.len()];
+
+                self.planned.edits.push(Edit {
+                    start: region.span.start + start as u32,
+                    end: region.span.start + end as u32,
+                    replacement: format!("{leading}{new}"),
+                    kind: EditKind::Comment,
+                });
             }
         }
     }

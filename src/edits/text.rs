@@ -1,9 +1,11 @@
-//! Finding names in the text of strings and docblocks.
+//! Finding names in the text of strings and comments.
 //!
 //! Neither is parsed by PHP, so the names in them are found by reading the text.
 //! A string is only changed where it spells a name unambiguously: with a
-//! backslash in it (`'Acme\Core\Client'`, `'Acme\\Core\\'`). A docblock is only
-//! read where a tag holds a type (`@param Foo $x`), not in prose.
+//! backslash in it (`'Acme\Core\Client'`, `'Acme\\Core\\'`). A docblock is read
+//! where a tag holds a type (`@param Foo $x`), the way names are read in code.
+//! The rest of a comment, docblock prose and examples included, is changed the
+//! way a string is: only where a name has a backslash in it.
 
 use crate::edits::names::NameMap;
 
@@ -244,6 +246,68 @@ fn run_edit(names: &NameMap, content: &[u8], run: &Run, quote: u8) -> Option<Tex
     })
 }
 
+/// Where the names with a backslash in them are in a comment, as ranges of
+/// `raw`: `Acme\Core\Client` and `\Acme\Core\Client`, but not a bare word, a
+/// lone `\Global`, a variable, or a namespace that ends in a separator.
+pub(super) fn comment_names(raw: &str) -> Vec<(usize, usize)> {
+    let bytes = raw.as_bytes();
+    let mut found = Vec::new();
+    let mut at = 0;
+
+    while at < bytes.len() {
+        let start = at;
+        let leading = bytes[at] == b'\\';
+
+        if !(starts_name(bytes[at]) || leading) {
+            at += 1;
+            continue;
+        }
+
+        // In the middle of a word, a variable, or a longer run of backslashes.
+        if start > 0 && (is_name_byte(bytes[start - 1]) || matches!(bytes[start - 1], b'$' | b'\\'))
+        {
+            at += 1;
+            continue;
+        }
+
+        let mut position = start + usize::from(leading);
+        let mut segments = 0;
+        let mut end = position;
+
+        loop {
+            if !bytes.get(position).is_some_and(|byte| starts_name(*byte)) {
+                break;
+            }
+
+            while bytes.get(position).is_some_and(|byte| is_name_byte(*byte)) {
+                position += 1;
+            }
+
+            segments += 1;
+            end = position;
+
+            // A single backslash and then a name: `\\` is not a separator here.
+            if bytes.get(position) == Some(&b'\\')
+                && bytes
+                    .get(position + 1)
+                    .is_some_and(|byte| starts_name(*byte))
+            {
+                position += 1;
+            } else {
+                break;
+            }
+        }
+
+        if segments >= 2 {
+            found.push((start, end));
+        }
+
+        at = end.max(start + 1);
+    }
+
+    found
+}
+
 /// The tags whose text starts with a type, or a name.
 const TYPE_TAGS: &[&str] = &[
     "param",
@@ -382,5 +446,43 @@ fn scan_type(expression: &str, base: usize, found: &mut Vec<(usize, usize)>) {
         if !skip {
             found.push((base + start, base + at));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names_in(raw: &str) -> Vec<&str> {
+        comment_names(raw)
+            .into_iter()
+            .map(|(start, end)| &raw[start..end])
+            .collect()
+    }
+
+    #[test]
+    fn finds_names_with_a_backslash() {
+        assert_eq!(
+            names_in("Use \\Acme\\Core\\Client or Acme\\Sub, then see Foo\\Bar::baz()."),
+            ["\\Acme\\Core\\Client", "Acme\\Sub", "Foo\\Bar"]
+        );
+    }
+
+    #[test]
+    fn skips_what_is_not_an_unambiguous_name() {
+        assert!(names_in("A \\Lone class, a word, $Var\\Name, Acme\\ and 3\\x.").is_empty());
+        assert!(names_in("Escaped Acme\\\\Core is not one name.").is_empty());
+        assert!(names_in("google\\.com and \\d+").is_empty());
+    }
+
+    #[test]
+    fn stops_where_the_name_does() {
+        assert_eq!(names_in("(Acme\\Core\\Client)"), ["Acme\\Core\\Client"]);
+        assert_eq!(
+            names_in("Acme\\Core\\Client::create"),
+            ["Acme\\Core\\Client"]
+        );
+        // A namespace written with its trailing separator is the name without it.
+        assert_eq!(names_in("Acme\\Core\\ is searched"), ["Acme\\Core"]);
     }
 }

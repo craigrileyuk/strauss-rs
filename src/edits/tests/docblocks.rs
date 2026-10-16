@@ -40,11 +40,107 @@ function make($a, $b, $c) {}"#,
 }
 
 #[test]
-fn prose_is_left_alone() {
-    let body = r#"/**
+fn names_with_a_backslash_in_prose_follow_the_rename() {
+    expect(
+        r#"/**
  * Wraps \Acme\Core\Client so that Acme\Core\Sub\Thing works.
  *
- * Returns a \GlobalClass.
+ * @deprecated Use \Acme\Core\Client instead.
+ */
+class C {}"#,
+        r#"/**
+ * Wraps \P\V\Acme\Core\Client so that P\V\Acme\Core\Sub\Thing works.
+ *
+ * @deprecated Use \P\V\Acme\Core\Client instead.
+ */
+class C {}"#,
+    );
+}
+
+#[test]
+fn examples_in_a_docblock_follow_the_rename() {
+    expect(
+        r#"/**
+ * Usage:
+ *
+ *     $client = new Acme\Core\Client();
+ *     $thing = Acme\Core\Sub\Thing::make();
+ */
+class C {}"#,
+        r#"/**
+ * Usage:
+ *
+ *     $client = new P\V\Acme\Core\Client();
+ *     $thing = P\V\Acme\Core\Sub\Thing::make();
+ */
+class C {}"#,
+    );
+}
+
+#[test]
+fn a_description_after_a_tags_type_follows_the_rename() {
+    expect(
+        r#"/**
+ * @param \Acme\Core\Client $client Not an Acme\Core\Sub\Thing.
+ */
+function f($client) {}"#,
+        r#"/**
+ * @param \P\V\Acme\Core\Client $client Not an P\V\Acme\Core\Sub\Thing.
+ */
+function f($client) {}"#,
+    );
+}
+
+#[test]
+fn a_tag_name_written_in_full_without_a_backslash_follows_the_rename() {
+    // Resolved relative to the namespace it names nothing, so it is read as the
+    // full name it was meant to be.
+    expect(
+        r#"/**
+ * @see Acme\Core\Client::create()
+ * @param Acme\Core\Sub\Thing $thing
+ */
+function f($thing) {}"#,
+        r#"/**
+ * @see P\V\Acme\Core\Client::create()
+ * @param P\V\Acme\Core\Sub\Thing $thing
+ */
+function f($thing) {}"#,
+    );
+}
+
+#[test]
+fn a_name_in_a_tags_type_is_not_edited_twice() {
+    expect(
+        r#"/**
+ * @return \Acme\Core\Client
+ * @see \Acme\Core\Client::create()
+ */
+function f() {}"#,
+        r#"/**
+ * @return \P\V\Acme\Core\Client
+ * @see \P\V\Acme\Core\Client::create()
+ */
+function f() {}"#,
+    );
+}
+
+#[test]
+fn a_namespace_in_prose_follows_the_rename() {
+    expect(
+        "/** Classes in Acme\\Core\\ and Acme\\Core are searched. */\nclass C {}",
+        "/** Classes in P\\V\\Acme\\Core\\ and P\\V\\Acme\\Core are searched. */\nclass C {}",
+    );
+}
+
+#[test]
+fn prose_that_is_not_an_unambiguous_name_is_left_alone() {
+    // A lone global class, a bare word, a variable, a file path and a name that
+    // isn't one of the renamed.
+    let body = r#"/**
+ * Returns a \GlobalClass, or a Client. See $Acme\Core\Client.
+ * Uses c:\temp\file.txt.
+ * Not Other\Lib\Thing.
  */
 class C {}"#;
 
