@@ -87,3 +87,18 @@ fn parses_the_data_format() {
     assert!(!built_ins.is_class_like("ignored"));
     assert!(!built_ins.is_function("foo"));
 }
+
+#[test]
+fn recognises_functions_that_only_some_sapis_provide() {
+    let built_ins = BuiltIns::get();
+
+    for name in [
+        "getallheaders",
+        "apache_request_headers",
+        "fastcgi_finish_request",
+        "litespeed_request_headers",
+        "frankenphp_handle_request",
+    ] {
+        assert!(built_ins.is_function(name), "{name}");
+    }
+}

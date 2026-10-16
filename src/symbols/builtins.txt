@@ -2777,3 +2777,26 @@ f zip_read
 f zlib_decode
 f zlib_encode
 f zlib_get_coding_type
+#
+# Functions only some SAPIs provide (Apache, FastCGI, LiteSpeed, FrankenPHP). The list above comes from
+# the command line, which has none of them, but polyfills such as ralouphie/getallheaders declare them
+# for the SAPIs that don't, so renaming them breaks every call that PHP would have answered itself.
+f apache_child_terminate
+f apache_get_modules
+f apache_get_version
+f apache_getenv
+f apache_lookup_uri
+f apache_note
+f apache_request_headers
+f apache_response_headers
+f apache_setenv
+f fastcgi_finish_request
+f frankenphp_finish_request
+f frankenphp_handle_request
+f frankenphp_request_headers
+f frankenphp_response_headers
+f getallheaders
+f litespeed_finish_request
+f litespeed_request_headers
+f litespeed_response_headers
+f virtual
