@@ -24,7 +24,7 @@ for argument in "$@"; do
     esac
 done
 
-[ -n "$presets" ] || presets="wordpress woocommerce"
+[ -n "$presets" ] || presets="wordpress woocommerce wp-cli"
 
 # stubs_package, description
 describe() {
@@ -36,6 +36,10 @@ describe() {
         woocommerce)
             stubs=php-stubs/woocommerce-stubs
             title="WooCommerce's"
+            ;;
+        wp-cli)
+            stubs=php-stubs/wp-cli-stubs
+            title="WP-CLI's"
             ;;
         *)
             echo "unknown preset: $1" >&2

@@ -1,0 +1,105 @@
+# WP-CLI's global classes, interfaces, traits, functions and constants.
+#
+# Symbols with these names are never renamed when the `wp-cli` preset is on
+# (`exclude_presets`): a library's copy of them would no longer be what
+# the rest of the platform expects.
+#
+# Generated from php-stubs/wp-cli-stubs v2.12.0 by
+# scripts/generate-presets.sh. Don't edit by hand, except for the constants,
+# which the stubs mostly don't declare: those come from
+# scripts/wp-cli-constants.txt.
+
+c CLI_Alias_Command
+c CLI_Cache_Command
+c CLI_Command
+c Cache_Command
+c Capabilities_Command
+c Checksum_Base_Command
+c Checksum_Core_Command
+c Checksum_Plugin_Command
+c Comment_Command
+c Comment_Meta_Command
+c Config_Command
+c Core_Command
+c Core_Command_Namespace
+c Core_Language_Command
+c Cron_Command
+c Cron_Event_Command
+c Cron_Schedule_Command
+c DB_Command
+c EvalFile_Command
+c Eval_Command
+c Export_Command
+c Help_Command
+c Import_Command
+c Language_Namespace
+c Media_Command
+c Menu_Command
+c Menu_Item_Command
+c Menu_Location_Command
+c Network_Meta_Command
+c Network_Namespace
+c Option_Command
+c Oxymel
+c OxymelException
+c Package_Command
+c Plugin_AutoUpdates_Command
+c Plugin_Command
+c Plugin_Command_Namespace
+c Plugin_Language_Command
+c Post_Command
+c Post_Meta_Command
+c Post_Term_Command
+c Post_Type_Command
+c Rewrite_Command
+c Role_Command
+c Scaffold_Command
+c Search_Replace_Command
+c Server_Command
+c Shell_Command
+c Sidebar_Command
+c Signup_Command
+c Site_Command
+c Site_Meta_Command
+c Site_Option_Command
+c Site_Switch_Language_Command
+c Super_Admin_Command
+c Taxonomy_Command
+c Term_Command
+c Term_Meta_Command
+c Theme_AutoUpdates_Command
+c Theme_Command
+c Theme_Language_Command
+c Theme_Mod_Command
+c Transient_Command
+c User_Application_Password_Command
+c User_Command
+c User_Meta_Command
+c User_Session_Command
+c User_Term_Command
+c WP_CLI
+c WP_CLI_Command
+c WP_Export_Base_Writer
+c WP_Export_Exception
+c WP_Export_File_Writer
+c WP_Export_Oxymel
+c WP_Export_Query
+c WP_Export_Returner
+c WP_Export_Split_Files_Writer
+c WP_Export_Term_Exception
+c WP_Export_WXR_Formatter
+c WP_Export_XML_Over_HTTP
+c WP_Iterator_Exception
+c WP_Map_Iterator
+c WP_Post_IDs_Iterator
+c Widget_Command
+k WP_CLI
+k WP_CLI_BINARY
+k WP_CLI_CONFIG_PATH
+k WP_CLI_PACKAGES_DIR
+k WP_CLI_PHP_BINARY
+k WP_CLI_PHP_USED
+k WP_CLI_ROOT
+k WP_CLI_START_MICROTIME
+k WP_CLI_VENDOR_DIR
+k WP_CLI_VERSION

@@ -137,12 +137,12 @@
             }
         },
         "exclude_presets": {
-            "description": "Sets of symbols that something other than PHP provides, which are never renamed. `wordpress` is Wordpress core's global classes, functions and constants, and `woocommerce` is WooCommerce's, so a library's shim for them is left alone. Set to `[]` to rename them like any other symbol.",
+            "description": "Sets of symbols that something other than PHP provides, which are never renamed. `wordpress` is Wordpress core's global classes, functions and constants, and `woocommerce` is WooCommerce's, and `wp-cli` is WP-CLI's, so a library's shim for them is left alone. Set to `[]` to rename them like any other symbol.",
             "type": "array",
             "uniqueItems": true,
             "default": ["wordpress"],
             "items": {
-                "enum": ["wordpress", "woocommerce"]
+                "enum": ["wordpress", "woocommerce", "wp-cli"]
             }
         },
         "exclude_from_string_rename": {

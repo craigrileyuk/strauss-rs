@@ -96,7 +96,10 @@ fn rejects_an_unknown_preset() {
 
     assert!(message.contains("`exclude_presets[1]`"), "{message}");
     assert!(message.contains("`drupal` is not a preset"), "{message}");
-    assert!(message.contains("wordpress, woocommerce"), "{message}");
+    assert!(
+        message.contains("wordpress, woocommerce, wp-cli"),
+        "{message}"
+    );
 }
 
 #[test]
@@ -109,5 +112,9 @@ fn the_woocommerce_preset_is_opt_in() {
     assert_eq!(
         strauss_only(r#"{"exclude_presets": ["WooCommerce"]}"#).exclude_presets,
         ["woocommerce"]
+    );
+    assert_eq!(
+        strauss_only(r#"{"exclude_presets": ["WP-CLI"]}"#).exclude_presets,
+        ["wp-cli"]
     );
 }

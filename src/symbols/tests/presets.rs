@@ -188,5 +188,45 @@ fn woocommerce_symbols_are_ordinary_unless_the_preset_is_on() {
 fn presets_have_titles() {
     assert_eq!(PresetSymbols::title("woocommerce"), "WooCommerce");
     assert_eq!(PresetSymbols::title("wordpress"), "Wordpress");
+    assert_eq!(PresetSymbols::title("wp-cli"), "WP-CLI");
     assert_eq!(PresetSymbols::title("php"), "PHP");
+}
+
+#[test]
+fn wp_cli_symbols_are_recognised() {
+    let wp_cli = PresetSymbols::get("wp-cli").unwrap();
+
+    assert!(wp_cli.is_class_like("WP_CLI"));
+    assert!(wp_cli.is_class_like("wp_cli_command"));
+    assert!(wp_cli.is_class_like("Plugin_Command"));
+    assert!(wp_cli.is_constant("WP_CLI"));
+    assert!(!wp_cli.is_constant("wp_cli"));
+    // Namespaced, so a different class.
+    assert!(!wp_cli.is_class_like("WP_CLI\\Utils"));
+    assert!(!wp_cli.is_class_like("WP_Error"));
+    assert!(
+        !PresetSymbols::get("wordpress")
+            .unwrap()
+            .is_class_like("WP_CLI_Command")
+    );
+}
+
+#[test]
+fn leaves_out_what_wp_cli_provides_when_it_is_on() {
+    let table = scan_presets(&["wp-cli"]);
+
+    assert_eq!(
+        provided(&table, SymbolKind::Class, "WP_CLI_Command").as_deref(),
+        Some("wp-cli")
+    );
+    assert_eq!(
+        provided(&table, SymbolKind::Constant, "WP_CLI").as_deref(),
+        Some("wp-cli")
+    );
+    assert!(table.get(SymbolKind::Class, "WP_CLI_Command").is_none());
+
+    let table = scan_presets(&["wordpress"]);
+
+    assert!(table.get(SymbolKind::Class, "WP_CLI_Command").is_some());
+    assert!(table.get(SymbolKind::Constant, "WP_CLI").is_some());
 }

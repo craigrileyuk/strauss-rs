@@ -9,17 +9,18 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 /// The presets that can be named in `exclude_presets`.
-pub const PRESET_NAMES: &[&str] = &["wordpress", "woocommerce"];
+pub const PRESET_NAMES: &[&str] = &["wordpress", "woocommerce", "wp-cli"];
 
-/// The presets on when `exclude_presets` isn't set. WooCommerce is only for
-/// plugins that extend it, so it is opt-in.
+/// The presets on when `exclude_presets` isn't set. WooCommerce and WP-CLI are
+/// only for plugins that extend them, so they are opt-in.
 pub const DEFAULT_PRESETS: &[&str] = &["wordpress"];
 
-/// `wordpress.txt` and `woocommerce.txt`: one symbol per line, `c` for a class, interface or trait,
+/// `wordpress.txt`, `woocommerce.txt` and `wp-cli.txt`: one symbol per line, `c` for a class, interface or trait,
 /// `f` for a function and `k` for a constant. `#` starts a comment. Generated
 /// by `scripts/generate-presets.sh`.
 const WORDPRESS: &str = include_str!("presets/wordpress.txt");
 const WOOCOMMERCE: &str = include_str!("presets/woocommerce.txt");
+const WP_CLI: &str = include_str!("presets/wp-cli.txt");
 
 #[derive(Debug, Default)]
 pub struct PresetSymbols {
@@ -36,12 +37,14 @@ impl PresetSymbols {
     pub fn get(preset: &str) -> Option<&'static PresetSymbols> {
         static WORDPRESS_SYMBOLS: OnceLock<PresetSymbols> = OnceLock::new();
         static WOOCOMMERCE_SYMBOLS: OnceLock<PresetSymbols> = OnceLock::new();
+        static WP_CLI_SYMBOLS: OnceLock<PresetSymbols> = OnceLock::new();
 
         match preset {
             "wordpress" => Some(WORDPRESS_SYMBOLS.get_or_init(|| PresetSymbols::parse(WORDPRESS))),
             "woocommerce" => {
                 Some(WOOCOMMERCE_SYMBOLS.get_or_init(|| PresetSymbols::parse(WOOCOMMERCE)))
             }
+            "wp-cli" => Some(WP_CLI_SYMBOLS.get_or_init(|| PresetSymbols::parse(WP_CLI))),
             _ => None,
         }
     }
@@ -53,6 +56,7 @@ impl PresetSymbols {
             "php" => "PHP",
             "wordpress" => "Wordpress",
             "woocommerce" => "WooCommerce",
+            "wp-cli" => "WP-CLI",
             other => other,
         }
     }
