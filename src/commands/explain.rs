@@ -258,6 +258,9 @@ fn hint(reason: &Reason) -> Option<String> {
         Reason::FileExcludedFromPrefix { pattern, .. } => {
             format!("change `{pattern}` in exclude_from_prefix.file_patterns to rename it")
         }
+        Reason::FunctionExcludedFromPrefix(function) => {
+            format!("remove `{function}` from exclude_from_prefix.functions to rename it")
+        }
         Reason::ConstantPackageExcluded(package) => {
             format!("remove `{package}` from exclude_constants.packages to rename it")
         }

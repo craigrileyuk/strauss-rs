@@ -258,6 +258,20 @@ Some libraries declare symbols that the platform they run on already has, usuall
 
 The class and function lists are generated from [php-stubs/wordpress-stubs](https://github.com/php-stubs/wordpress-stubs) and [php-stubs/woocommerce-stubs](https://github.com/php-stubs/woocommerce-stubs) and [php-stubs/wp-cli-stubs](https://github.com/php-stubs/wp-cli-stubs) with `scripts/generate-presets.sh`. The stubs mostly don't declare constants, so those come from `scripts/wordpress-constants.txt`, `scripts/woocommerce-constants.txt` and `scripts/wp-cli-constants.txt`. The `php-constants` list comes from `scripts/generate-php-constants.sh`, which lists what the PHP on your `PATH` defines, plus `scripts/php-constants-extra.txt` for constants from extensions or PHP versions it doesn't have.
 
+#### Single functions
+
+To leave one function alone, such as a `dd()` that a package declares and your own code also defines or checks for, name it in `exclude_from_prefix`:
+
+```json
+{
+  "exclude_from_prefix": {
+    "functions": ["dd"]
+  }
+}
+```
+
+It isn't renamed where it is declared, where it is called, or inside strings such as `function_exists('dd')`. Names are matched case-insensitively and a leading backslash is ignored. A function in a namespace is written in full (`Acme\Lib\helper`). `strauss-rs explain dd` says when this is why a function was left alone.
+
 ### Commands
 
 | Command    | What it does                                                          |

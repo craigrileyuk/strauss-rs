@@ -33,6 +33,8 @@ pub enum Reason {
     /// A file it is declared in matches this `exclude_from_prefix.file_patterns`
     /// entry.
     FileExcludedFromPrefix { pattern: String, file: String },
+    /// It is this `exclude_from_prefix.functions` entry.
+    FunctionExcludedFromPrefix(String),
     /// Its package is in `exclude_constants.packages`.
     ConstantPackageExcluded(String),
     /// Its namespace is, or is within, this `exclude_constants.namespaces`
@@ -69,6 +71,7 @@ impl Reason {
             Reason::PackageExcludedFromPrefix(_) => "package_excluded_from_prefix",
             Reason::NamespaceExcludedFromPrefix(_) => "namespace_excluded_from_prefix",
             Reason::FileExcludedFromPrefix { .. } => "file_excluded_from_prefix",
+            Reason::FunctionExcludedFromPrefix(_) => "function_excluded_from_prefix",
             Reason::ConstantPackageExcluded(_) => "constant_package_excluded",
             Reason::ConstantNamespaceExcluded(_) => "constant_namespace_excluded",
             Reason::ConstantFileExcluded { .. } => "constant_file_excluded",
@@ -125,6 +128,12 @@ impl fmt::Display for Reason {
                 formatter,
                 "{file} matches exclude_from_prefix.file_patterns `{pattern}`"
             ),
+            Reason::FunctionExcludedFromPrefix(function) => {
+                write!(
+                    formatter,
+                    "it is in exclude_from_prefix.functions `{function}`"
+                )
+            }
             Reason::ConstantPackageExcluded(package) => {
                 write!(
                     formatter,

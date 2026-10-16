@@ -105,8 +105,28 @@
             "description": "Packages, namespaces and files that are not copied to `target_directory`."
         },
         "exclude_from_prefix": {
-            "$ref": "#/definitions/exclusions",
-            "description": "Symbols defined in these packages, namespaces and files are not renamed. Where they are used is still updated."
+            "description": "Symbols defined in these packages, namespaces and files are not renamed, and nor are the functions named here. Where they are used is still updated.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "packages": {
+                    "$ref": "#/definitions/packageList"
+                },
+                "namespaces": {
+                    "$ref": "#/definitions/namespaceList"
+                },
+                "file_patterns": {
+                    "$ref": "#/definitions/patternList"
+                },
+                "functions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^\\\\?[A-Za-z_\\u0080-\\uffff][A-Za-z0-9_\\u0080-\\uffff]*(\\\\[A-Za-z_\\u0080-\\uffff][A-Za-z0-9_\\u0080-\\uffff]*)*$"
+                    },
+                    "description": "Function names that are never prefixed, wherever they are declared and whatever the case, e.g. `dd`. A function in a namespace is written in full, e.g. `Acme\\Lib\\helper`."
+                }
+            }
         },
         "exclude_files_from_update": {
             "$ref": "#/definitions/exclusions",

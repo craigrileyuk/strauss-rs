@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::config::CONFIG_FILE;
 use crate::config::error::{ConfigError, invalid};
 use crate::config::model::{Exclusions, Parallel, UpdateCallSites};
-use crate::config::raw::RawExclusions;
+use crate::config::raw::{RawExclusions, RawPrefixExclusions};
 use crate::php_pattern::PhpPattern;
 use crate::symbols::presets::{DEFAULT_PRESETS, PRESET_NAMES};
 
@@ -209,7 +209,37 @@ pub(super) fn resolve_exclusions(key: &str, raw: RawExclusions) -> Result<Exclus
         packages: raw.packages,
         namespaces,
         file_patterns,
+        functions: Vec::new(),
     })
+}
+
+/// `exclude_from_prefix`: the lists the others have, and function names.
+pub(super) fn resolve_prefix_exclusions(
+    key: &str,
+    raw: RawPrefixExclusions,
+) -> Result<Exclusions, ConfigError> {
+    let mut functions = Vec::new();
+
+    for (index, function) in raw.functions.iter().enumerate() {
+        // `\dd` and `dd` are the same function.
+        let trimmed = function.trim_start_matches('\\');
+
+        require_non_empty(&format!("{key}.functions[{index}]"), trimmed)?;
+        functions.push(trimmed.to_string());
+    }
+
+    let mut exclusions = resolve_exclusions(
+        key,
+        RawExclusions {
+            packages: raw.packages,
+            namespaces: raw.namespaces,
+            file_patterns: raw.file_patterns,
+        },
+    )?;
+
+    exclusions.functions = functions;
+
+    Ok(exclusions)
 }
 
 pub(super) fn resolve_update_call_sites(

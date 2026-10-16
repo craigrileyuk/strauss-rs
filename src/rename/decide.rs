@@ -139,6 +139,16 @@ fn excluded_from_prefix(
         return Some(Reason::PackageExcludedFromPrefix(package.to_string()));
     }
 
+    if entry.kind == SymbolKind::Function {
+        if let Some(function) = exclusions
+            .functions
+            .iter()
+            .find(|function| function.eq_ignore_ascii_case(&entry.name))
+        {
+            return Some(Reason::FunctionExcludedFromPrefix(function.clone()));
+        }
+    }
+
     // Excluded when every file that declares it is. A namespace several files
     // share is still renamed for the others, though PHP Strauss would leave it
     // as it is because of any one of them.

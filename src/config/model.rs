@@ -259,6 +259,10 @@ pub struct Exclusions {
     /// Regular expressions matched against the path relative to the vendor
     /// directory.
     pub file_patterns: Vec<PhpPattern>,
+    /// Function names that are never prefixed, without a leading backslash.
+    /// Only `exclude_from_prefix` takes them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub functions: Vec<String>,
 }
 
 #[derive(Debug, Default, Serialize)]

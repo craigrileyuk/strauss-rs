@@ -122,3 +122,20 @@ fn the_woocommerce_preset_is_opt_in() {
         ["php-constants"]
     );
 }
+
+#[test]
+fn exclude_from_prefix_takes_function_names_without_a_leading_backslash() {
+    let config =
+        strauss_only(r#"{"exclude_from_prefix": {"functions": ["dd", "\\Acme\\helper"]}}"#);
+
+    assert_eq!(config.exclude_from_prefix.functions, ["dd", "Acme\\helper"]);
+}
+
+#[test]
+fn only_exclude_from_prefix_takes_functions() {
+    assert!(error(r#"{"exclude_from_copy": {"functions": ["dd"]}}"#).contains("functions"));
+    assert!(
+        error(r#"{"exclude_from_prefix": {"functions": [""]}}"#)
+            .contains("`exclude_from_prefix.functions[0]`")
+    );
+}

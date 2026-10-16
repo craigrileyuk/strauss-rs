@@ -301,3 +301,27 @@ fn when_the_target_is_the_vendor_directory_nothing_is_left_out_for_not_being_cop
     assert!(run.files.iter().all(|file| !file.copy));
     assert!(symbol(&run.plan, SymbolKind::Class, "Acme\\Psr4\\CopyExcluded\\X").rename);
 }
+
+#[test]
+fn a_function_in_exclude_from_prefix_functions_is_not_renamed_whatever_its_case() {
+    let run = run(|config| config.exclude_from_prefix.functions = vec!["FILES_Helper".to_string()]);
+
+    assert_eq!(
+        reason(&run.plan, SymbolKind::Function, "files_helper"),
+        &Reason::FunctionExcludedFromPrefix("FILES_Helper".to_string())
+    );
+    assert_eq!(
+        new_name(&run.plan, SymbolKind::Function, "files_helper"),
+        None
+    );
+
+    // Only that function: the rest of the file is renamed as before.
+    assert!(new_name(&run.plan, SymbolKind::Class, "FilesClass").is_some());
+}
+
+#[test]
+fn exclude_from_prefix_functions_does_not_touch_other_kinds_of_symbol() {
+    let run = run(|config| config.exclude_from_prefix.functions = vec!["FilesClass".to_string()]);
+
+    assert!(new_name(&run.plan, SymbolKind::Class, "FilesClass").is_some());
+}

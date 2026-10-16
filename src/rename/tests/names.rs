@@ -457,6 +457,7 @@ fn every_reason_has_a_category() {
         Reason::PackageExcludedFromCopy(String::new()).category(),
         Reason::PackageExcludedFromPrefix(String::new()).category(),
         Reason::NamespaceExcludedFromPrefix(String::new()).category(),
+        Reason::FunctionExcludedFromPrefix(String::new()).category(),
         Reason::FileExcludedFromPrefix {
             pattern: String::new(),
             file: String::new(),

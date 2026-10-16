@@ -27,7 +27,7 @@ pub(super) struct RawConfig {
     pub(super) parallel: Option<Value>,
     pub(super) override_autoload: Option<BTreeMap<String, Autoload>>,
     pub(super) exclude_from_copy: Option<RawExclusions>,
-    pub(super) exclude_from_prefix: Option<RawExclusions>,
+    pub(super) exclude_from_prefix: Option<RawPrefixExclusions>,
     pub(super) exclude_files_from_update: Option<RawExclusions>,
     pub(super) exclude_constants: Option<RawConstantExclusions>,
     pub(super) exclude_presets: Option<Vec<String>>,
@@ -51,6 +51,19 @@ pub(super) struct RawExclusions {
     pub(super) namespaces: Vec<String>,
     #[serde(default)]
     pub(super) file_patterns: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawPrefixExclusions {
+    #[serde(default)]
+    pub(super) packages: Vec<String>,
+    #[serde(default)]
+    pub(super) namespaces: Vec<String>,
+    #[serde(default)]
+    pub(super) file_patterns: Vec<String>,
+    #[serde(default)]
+    pub(super) functions: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

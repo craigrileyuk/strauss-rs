@@ -32,8 +32,8 @@ use crate::config::infer::{autoloads_directory, infer_classmap_prefix, infer_nam
 use crate::config::raw::{RawConfig, RawExclusions};
 use crate::config::validate::{
     check_shape, is_identifier, normalise_target_directory, require_non_empty, resolve_exclusions,
-    resolve_functions_prefix, resolve_parallel, resolve_presets, resolve_update_call_sites,
-    validate_name_prefix, validate_namespace_prefix,
+    resolve_functions_prefix, resolve_parallel, resolve_prefix_exclusions, resolve_presets,
+    resolve_update_call_sites, validate_name_prefix, validate_namespace_prefix,
 };
 use crate::php_pattern::{PhpPattern, Replacement};
 
@@ -216,7 +216,7 @@ impl Config {
                 "exclude_from_copy",
                 raw.exclude_from_copy.unwrap_or_default(),
             )?,
-            exclude_from_prefix: resolve_exclusions(
+            exclude_from_prefix: resolve_prefix_exclusions(
                 "exclude_from_prefix",
                 raw.exclude_from_prefix.unwrap_or_default(),
             )?,
