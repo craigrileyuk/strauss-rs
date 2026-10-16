@@ -262,3 +262,16 @@ fn classmap_paths_are_prefixes() {
     ));
     assert!(!in_classmap(&autoload(&["."], &["tests/"]), "tests/A.php"));
 }
+
+#[test]
+fn a_package_without_psr_rules_has_every_namespace_it_declares_autoloaded_once_any_file_is() {
+    let run = default_run();
+
+    // `includes/namespaced.php` is not in the `files` list, but the package
+    // finds its classes by namespace at run time.
+    assert!(symbol(&run.plan, SymbolKind::Namespace, "Acme\\FilesLib\\Sub").autoloaded);
+    assert!(symbol(&run.plan, SymbolKind::Class, "Acme\\FilesLib\\Sub\\Extra").autoloaded);
+
+    // Global symbols in it keep following the rules for their own file.
+    assert!(!symbol(&run.plan, SymbolKind::Function, "other_helper").autoloaded);
+}

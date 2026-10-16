@@ -110,6 +110,59 @@ pub(super) fn mark(entries: &mut [PlannedSymbol], table: &SymbolTable, packages:
             }
         }
     }
+
+    mark_namespaces_of_packages_without_psr_rules(entries, table, packages, &file_autoloaded);
+}
+
+/// A package with `files` or `classmap` autoloading and no `psr-0` or `psr-4`
+/// rule loads its own other files by `require`, and finds classes by namespace
+/// at run time (`__NAMESPACE__`, `class_exists()` on a built name). Renaming
+/// only the namespaces its autoloaded files declare leaves the package split
+/// between the prefixed and the original, so once any file of such a package
+/// is autoloaded, every namespace it declares and everything in them is too.
+/// Symbols in the global namespace are left to the rules above. This goes
+/// further than PHP Strauss, whose output for these packages doesn't work.
+fn mark_namespaces_of_packages_without_psr_rules(
+    entries: &mut [PlannedSymbol],
+    table: &SymbolTable,
+    packages: &PackageSet,
+    file_autoloaded: &HashMap<&str, bool>,
+) {
+    let mut packages_to_widen: Vec<&str> = Vec::new();
+
+    for file in &table.files {
+        let Some(package) = packages.get(&file.package) else {
+            continue;
+        };
+
+        let has_psr_rules =
+            !package.autoload.psr4.0.is_empty() || !package.autoload.psr0.0.is_empty();
+
+        // `override_autoload` is the user deciding exactly what is autoloaded.
+        if !has_psr_rules
+            && !package.autoload_overridden
+            && file_autoloaded
+                .get(file.vendor_relative_path.as_str())
+                .copied()
+                .unwrap_or(false)
+            && !packages_to_widen.contains(&file.package.as_str())
+        {
+            packages_to_widen.push(file.package.as_str());
+        }
+    }
+
+    for entry in entries.iter_mut() {
+        let namespaced = entry.kind == SymbolKind::Namespace || !entry.is_global();
+
+        if namespaced
+            && entry
+                .packages
+                .iter()
+                .any(|name| packages_to_widen.contains(&name.as_str()))
+        {
+            entry.autoloaded = true;
+        }
+    }
 }
 
 /// `src/Foo.php` for `acme/lib/src/Foo.php` in package `acme/lib`.

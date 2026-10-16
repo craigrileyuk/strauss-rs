@@ -55,20 +55,20 @@ fn symbols_say_which_packages_declare_them() {
 fn counts_symbols_by_kind_and_by_reason() {
     let summary = default_run().plan.summary();
 
-    assert_eq!(summary.symbols, 43);
-    assert_eq!(summary.renamed, 27);
+    assert_eq!(summary.symbols, 45);
+    assert_eq!(summary.renamed, 29);
 
     let kind = |name: &str| (summary.by_kind[name].total, summary.by_kind[name].renamed);
 
-    assert_eq!(kind("namespace"), (12, 8));
-    assert_eq!(kind("class"), (16, 7));
+    assert_eq!(kind("namespace"), (13, 9));
+    assert_eq!(kind("class"), (17, 8));
     assert_eq!(kind("interface"), (2, 2));
     assert_eq!(kind("trait"), (1, 1));
     assert_eq!(kind("enum"), (1, 1));
     assert_eq!(kind("function"), (7, 5));
     assert_eq!(kind("constant"), (4, 3));
 
-    assert_eq!(summary.reasons["autoloaded"], 23);
+    assert_eq!(summary.reasons["autoloaded"], 25);
     assert_eq!(summary.reasons["namespace_replacement_pattern"], 4);
     assert_eq!(summary.reasons["not_autoloaded"], 5);
     assert_eq!(summary.reasons["already_prefixed"], 2);
