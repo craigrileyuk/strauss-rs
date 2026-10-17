@@ -15,12 +15,10 @@ For full installation and usage instructions, see the [Documentation website](ht
 
 Maintained by
 
-<p align="center" style="height:40px;">
-    <a href="https://evomark.co.uk" target="_blank" alt="Link to evoMark's website">
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://evomark.co.uk/wp-content/uploads/static/evomark-logo--dark.svg">
-          <source media="(prefers-color-scheme: light)" srcset="https://evomark.co.uk/wp-content/uploads/static/evomark-logo--light.svg">
-          <img alt="evoMark company logo" src="https://evomark.co.uk/wp-content/uploads/static/evomark-logo--light.svg" width="500">
-        </picture>
-    </a>
-</p>
+  <a href="https://evomark.co.uk" target="_blank" alt="Link to evoMark's website">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://evomark.co.uk/wp-content/uploads/static/evomark-logo--dark.svg">
+        <source media="(prefers-color-scheme: light)" srcset="https://evomark.co.uk/wp-content/uploads/static/evomark-logo--light.svg">
+        <img alt="evoMark company logo" src="https://evomark.co.uk/wp-content/uploads/static/evomark-logo--light.svg" width="200" height="auto">
+      </picture>
+  </a>

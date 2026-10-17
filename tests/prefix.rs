@@ -374,3 +374,136 @@ fn a_dry_run_does_not_include_the_autoloader() {
         COMPOSER_AUTOLOAD
     );
 }
+
+/// Every file under `directory`, by path relative to it.
+fn tree(directory: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+    fn visit(root: &Path, at: &Path, files: &mut std::collections::BTreeMap<String, Vec<u8>>) {
+        for entry in fs::read_dir(at).unwrap() {
+            let path = entry.unwrap().path();
+
+            if path.is_dir() {
+                visit(root, &path, files);
+            } else {
+                let name = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+
+                files.insert(name, fs::read(&path).unwrap());
+            }
+        }
+    }
+
+    let mut files = std::collections::BTreeMap::new();
+
+    visit(directory, directory, &mut files);
+
+    files
+}
+
+/// Replaces the first `{` of the project's `strauss.json` with `{` and `extra`.
+fn with_settings(project: &Path, extra: &str) {
+    let config = fs::read_to_string(project.join("strauss.json")).unwrap();
+
+    fs::write(
+        project.join("strauss.json"),
+        config.replacen('{', &format!("{{\n    {extra},"), 1),
+    )
+    .unwrap();
+}
+
+#[test]
+fn running_it_twice_gives_the_same_output() {
+    let project = copy_of("edit-fixture", "twice");
+    with_settings(&project, "\"include_modified_date\": false");
+
+    assert!(prefix(&project, &[]).status.success());
+    let first = tree(&project.join("vendor-prefixed"));
+
+    assert!(prefix(&project, &[]).status.success());
+    let second = tree(&project.join("vendor-prefixed"));
+
+    assert!(!first.is_empty());
+    assert_eq!(first, second);
+}
+
+#[test]
+fn running_it_twice_does_not_prefix_the_projects_own_files_again() {
+    let project = project_with_call_sites("call-sites-twice", "true");
+    with_settings(&project, "\"include_modified_date\": false");
+
+    assert!(prefix(&project, &[]).status.success());
+    let once = fs::read_to_string(project.join("src/Plugin.php")).unwrap();
+    let output_once = tree(&project.join("vendor-prefixed"));
+
+    assert!(once.contains("use P\\V\\Acme\\Core\\Client;"), "{once}");
+
+    let output = prefix(&project, &[]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        fs::read_to_string(project.join("src/Plugin.php")).unwrap(),
+        once
+    );
+    assert!(!once.contains("P\\V\\P\\V\\"));
+    assert_eq!(tree(&project.join("vendor-prefixed")), output_once);
+}
+
+#[test]
+fn the_output_is_the_same_whatever_the_number_of_workers() {
+    let mut outputs = Vec::new();
+
+    for (name, workers) in [("workers-1", "1"), ("workers-4", "4"), ("workers-16", "16")] {
+        let project = copy_of("edit-fixture", name);
+        with_settings(&project, "\"include_modified_date\": false");
+
+        let output = prefix(&project, &[&format!("--parallel={workers}")]);
+
+        assert!(output.status.success(), "{}", stderr(&output));
+
+        outputs.push(tree(&project.join("vendor-prefixed")));
+    }
+
+    assert!(!outputs[0].is_empty());
+    assert_eq!(outputs[0], outputs[1]);
+    assert_eq!(outputs[0], outputs[2]);
+}
+
+#[test]
+fn clean_builds_in_different_places_give_the_same_files() {
+    let first = copy_of("edit-fixture", "clean-a");
+    let second = copy_of("edit-fixture", "clean-b");
+
+    for project in [&first, &second] {
+        with_settings(project, "\"include_modified_date\": false");
+        assert!(prefix(project, &[]).status.success());
+    }
+
+    assert_eq!(
+        tree(&first.join("vendor-prefixed")),
+        tree(&second.join("vendor-prefixed"))
+    );
+}
+
+#[test]
+fn a_name_built_at_run_time_is_reported() {
+    let project = copy_of("edit-fixture", "dynamic-name");
+
+    fs::write(
+        project.join("vendor/acme/core/src/Factory.php"),
+        "<?php\nnamespace Acme\\Core;\n\nclass Factory\n{\n    public function make($name)\n    {\n        $class = 'Acme\\\\' . $name;\n\n        return new $class();\n    }\n}\n",
+    )
+    .unwrap();
+
+    let output = prefix(&project, &[]);
+    let text = stderr(&output);
+
+    assert!(output.status.success(), "{text}");
+    assert!(text.contains("Factory.php"), "{text}");
+    assert!(text.contains("built at run time from `Acme\\`"), "{text}");
+    assert!(
+        text.contains("renamed namespaces such as `Acme\\"),
+        "{text}"
+    );
+}

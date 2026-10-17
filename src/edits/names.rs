@@ -48,6 +48,8 @@ impl Group {
 
 #[derive(Debug, Clone)]
 struct Entry {
+    /// The name as the packages declare it.
+    name: String,
     replacement: Option<String>,
 
     /// Whether the name is changed where it is the whole of a string.
@@ -73,6 +75,7 @@ impl NameMap {
 
         for symbol in &plan.symbols {
             let entry = Entry {
+                name: symbol.name.clone(),
                 replacement: symbol.replacement.clone(),
                 replace_in_strings: symbol.replace_in_strings,
             };
@@ -193,6 +196,27 @@ impl NameMap {
         names.contains(&group.key(name))
     }
 
+    /// A renamed namespace that `fragment` is the start of, such as `Acme\Core`
+    /// for `Acme\`. A namespace that is the whole of `fragment` doesn't count:
+    /// a string spelling it is rewritten as it stands.
+    pub fn renamed_namespace_starting_with(&self, fragment: &str) -> Option<&str> {
+        let fragment = fragment.trim_matches('\\').to_ascii_lowercase();
+
+        // A namespace that is renamed, or inside one that is, is rewritten
+        // where it is spelled out.
+        if fragment.is_empty() || self.new_namespace_text(&fragment) != fragment {
+            return None;
+        }
+
+        let start = format!("{fragment}\\");
+
+        self.namespaces
+            .iter()
+            .filter(|(key, entry)| entry.replacement.is_some() && key.starts_with(&start))
+            .map(|(_, entry)| entry.name.as_str())
+            .min()
+    }
+
     /// What a declared namespace is called afterwards.
     pub fn namespace(&self, name: &str) -> String {
         match self.namespaces.get(&name.to_ascii_lowercase()) {
@@ -265,6 +289,7 @@ impl NameMap {
     /// if it is.
     pub fn with(mut self, kind: SymbolKind, name: &str, replacement: Option<&str>) -> Self {
         let entry = Entry {
+            name: name.to_string(),
             replacement: replacement.map(String::from),
             replace_in_strings: true,
         };

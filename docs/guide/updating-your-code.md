@@ -37,3 +37,5 @@ Additionally, changing any of the prefixes in your config will _not_ update thos
 ## Names built at run time
 
 Strauss-RS renames names it can read in the code: `use` lines, type hints, `new Foo`, `Foo::bar()`, docblocks, and class names that appear whole inside strings. A name that is put together while the code runs, such as `'Acme\\' . $name`, is not found and is not changed. If your code does that, write the prefixed namespace into the string by hand.
+
+Where a string that is joined to something else with `.`, or has a variable inside it, ends in the start of a renamed namespace (`'Acme\\' . $name` when `Acme\Core` is renamed), `prefix` warns with the file and line. A name built in other ways, such as `$vendor . '\\Core\\Client'`, is not reported.

@@ -113,6 +113,7 @@ impl Segment<'_, '_> {
         self.plan_declarations();
         self.plan_strings();
         self.plan_quoted_strings();
+        self.warn_of_dynamic_names();
         self.plan_references(&context);
         self.plan_docblocks(&context);
         self.plan_comments();
@@ -436,6 +437,41 @@ impl Segment<'_, '_> {
         }
     }
 
+    /// A name put together while the code runs can't be found, so a string that
+    /// starts one is reported when it begins a renamed namespace: `'Acme\\' . $name`
+    /// or `"Acme\\$name"` where only `Acme\Core` is renamed.
+    fn warn_of_dynamic_names(&mut self) {
+        let mut found = Vec::new();
+
+        for region in &self.segment.regions {
+            if region.kind != RegionKind::String {
+                continue;
+            }
+
+            let Some(fragment) = dynamic_fragment(self.input.source, region.span, &region.text)
+            else {
+                continue;
+            };
+
+            let Some(namespace) = self.names.renamed_namespace_starting_with(&fragment) else {
+                continue;
+            };
+
+            let line = self.input.source[..region.span.start as usize]
+                .matches('\n')
+                .count()
+                + 1;
+
+            found.push(format!(
+                "line {line}: a name is built at run time from `{fragment}`, the start of renamed namespaces such as `{namespace}`; it is not rewritten, so write the prefixed namespace in by hand"
+            ));
+        }
+
+        for message in found {
+            self.warn(message);
+        }
+    }
+
     // ---- docblocks ----
 
     /// The classes named in the types of `@param`, `@return` and the like,
@@ -680,4 +716,69 @@ fn written_like(raw: &str, name: &str) -> String {
     } else {
         name.to_string()
     }
+}
+
+/// The namespace-like text a string ends with when something dynamic follows
+/// it: a variable inside the string, or a `.` after it. `Acme\` for
+/// `'Acme\\' . $name`. `None` if nothing dynamic follows or the string doesn't
+/// end like a namespace.
+fn dynamic_fragment(source: &str, span: Span, raw: &str) -> Option<String> {
+    let quote = *raw.as_bytes().first()?;
+
+    if !matches!(quote, b'\'' | b'"') || raw.len() < 2 || !raw.ends_with(quote as char) {
+        return None;
+    }
+
+    let content = &raw[1..raw.len() - 1];
+
+    let before = if quote == b'"' {
+        match interpolation_start(content) {
+            Some(at) => &content[..at],
+            None if concatenated(source, span) => content,
+            None => return None,
+        }
+    } else if concatenated(source, span) {
+        content
+    } else {
+        return None;
+    };
+
+    let start = before
+        .rfind(|c: char| !(c.is_alphanumeric() || c == '_' || c == '\\' || !c.is_ascii()))
+        .map_or(0, |at| {
+            at + before[at..].chars().next().map_or(1, char::len_utf8)
+        });
+
+    let fragment = before[start..].replace("\\\\", "\\");
+
+    fragment.ends_with('\\').then_some(fragment)
+}
+
+/// Where a variable is written inside a double quoted string.
+fn interpolation_start(content: &str) -> Option<usize> {
+    let bytes = content.as_bytes();
+    let mut at = 0;
+
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' => at += 2,
+            b'{' if bytes.get(at + 1) == Some(&b'$') => return Some(at),
+            b'$' if bytes
+                .get(at + 1)
+                .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_' || *b == b'{') =>
+            {
+                return Some(at);
+            }
+            _ => at += 1,
+        }
+    }
+
+    None
+}
+
+/// Whether the string is joined to something with `.`.
+fn concatenated(source: &str, span: Span) -> bool {
+    let rest = source[span.end as usize..].trim_start().as_bytes();
+
+    rest.first() == Some(&b'.') && !matches!(rest.get(1), Some(b'=' | b'.') | Some(b'0'..=b'9'))
 }

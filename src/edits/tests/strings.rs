@@ -206,3 +206,47 @@ fn a_callback_given_by_name_is_not_guessed_at() {
 
     assert_eq!(rewritten(body), in_namespace(body));
 }
+
+fn warnings(body: &str) -> Vec<String> {
+    plan_source(&names(), &in_namespace(body), false).warnings
+}
+
+#[test]
+fn a_name_built_from_the_start_of_a_renamed_namespace_is_reported() {
+    let found = warnings("$class = 'Acme\\\\' . $name;");
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].starts_with("pkg/file.php: line 4:"), "{found:?}");
+    assert!(found[0].contains("`Acme\\`"), "{found:?}");
+    assert!(found[0].contains("such as `Acme\\Core`"), "{found:?}");
+}
+
+#[test]
+fn a_variable_inside_a_double_quoted_name_is_reported() {
+    assert_eq!(warnings(r#"$class = "Acme\\$name";"#).len(), 1);
+    assert_eq!(warnings(r#"$class = "Acme\\{$name}\\Client";"#).len(), 1);
+}
+
+#[test]
+fn a_name_built_from_a_whole_namespace_is_not_reported() {
+    // The namespace is rewritten as it stands, so the rest can follow it.
+    assert!(warnings("$class = 'Acme\\\\Core\\\\' . $name;").is_empty());
+    assert!(warnings(r#"$class = "Acme\\Core\\$name";"#).is_empty());
+}
+
+#[test]
+fn a_string_that_is_not_joined_to_anything_is_not_reported() {
+    assert_eq!(
+        warnings("$a = 'Acme\\\\';\n$b = 'Acme\\\\' . 'Core';").len(),
+        1
+    );
+    assert!(warnings("$a = 'Acme\\\\';").is_empty());
+    assert!(warnings("$a = 'Acme\\\\'; $b = $a . 'x';").is_empty());
+}
+
+#[test]
+fn a_name_built_from_something_not_renamed_is_not_reported() {
+    assert!(warnings("$class = 'Other\\\\' . $name;").is_empty());
+    assert!(warnings("$class = 'Acme' . $name;").is_empty());
+    assert!(warnings("$n = 'Total: ' . $count;").is_empty());
+}
