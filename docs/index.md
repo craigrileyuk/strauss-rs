@@ -21,7 +21,7 @@ hero:
       link: /reference/configuration
 
 features:
-  - title: Avoids clashes between plugins
+  - title: Avoids clashes between dependencies
     details: Two projects (i.e. Wordpress plugins) can bundle different versions of the same library. Strauss-RS gives each plugin its own copy under its own namespace.
   - title: Reads your existing setup
     details: Works out defaults based on your composer.json file, with full customisation options.
