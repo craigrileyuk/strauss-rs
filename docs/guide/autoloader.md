@@ -20,9 +20,11 @@ If you would rather load it yourself, require the file from your plugin:
 require_once __DIR__ . '/vendor-prefixed/autoload.php';
 ```
 
-## Code that runs very early
+## Code execution order
 
-Some Wordpress code runs before any plugin has loaded: an `object-cache.php` drop-in, an `advanced-cache.php` drop-in, or a firewall that boots from `wp-config.php`. If that code uses a prefixed class, something has to load the prefixed autoloader first. With `include_autoloader` on, anything that loads Composer's `vendor/autoload.php` gets it. If your early code does not load Composer, it must require `vendor-prefixed/autoload.php` itself.
+Remember that your prefixed classes and symbols don't become available until the `vendor-prefixed` `autoload.php` file is included.
+
+For early-execution scripts, such as an `object-cache.php` drop-in, an `advanced-cache.php` drop-in, or a firewall that boots from `wp-config.php` in Wordpress, you will need to ensure that the autoloader is included before attempting to use any prefixed classes or symbols.
 
 ## Classmap or fallback
 

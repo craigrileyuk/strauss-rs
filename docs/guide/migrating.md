@@ -51,6 +51,6 @@ Then delete `extra.strauss` from `composer.json` so there is one place for the s
 - Packages that only use `files` or `classmap` autoloading have all their namespaces renamed together, so a package is never left half prefixed.
 - After a run with `delete_vendor_packages`, the next run needs `composer install` first. Hooking `prefix` onto the Composer scripts does this for you.
 
-## Settings that need a second look
+## Things to verify
 
 Strauss PHP projects often list the Symfony polyfill packages (`symfony/polyfill-mbstring` and similar) under `exclude_from_prefix`, because they declare constants and functions that PHP already provides. Strauss-RS has the `php-constants` preset for this. See [leaving things alone](./exclusions#php-constants).

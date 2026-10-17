@@ -18,10 +18,6 @@ Run `explain` with the function name to see which setting decided it.
 
 If `update_call_sites` already rewrote your files, the old name is gone from them and a new run cannot restore it. Put the files back with `git checkout`, fix the setting, and run `prefix` again. See [updating your own code](./updating-your-code#it-does-not-undo-itself).
 
-## A package is half prefixed
-
-Older versions only renamed the namespaces declared in the files a package autoloads. A package that loads its own files by `require` could end up with some namespaces renamed and some not. Update to the latest release and run `prefix` again.
-
 ## A theme passes a Collection and my plugin rejects it
 
 After prefixing, `Illuminate\Support\Collection` in a theme and `Acme\Plugin\Vendor\Illuminate\Support\Collection` in your plugin are two different classes. Strauss-RS cannot make them interchangeable. Where your plugin takes objects from outside, accept `iterable`, `Traversable` or `array` and wrap the value in your own prefixed class inside your code. Do the same for values you hand back.

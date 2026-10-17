@@ -1,6 +1,6 @@
 # Updating your own code
 
-Your plugin's own files refer to the packages too. A line like `use Acme\Core\Client;` has to become `use Acme\Vendor\Acme\Core\Client;` once the package is prefixed. Set `update_call_sites` and `prefix` rewrites those files in place:
+Your project's own files refer to the packages too. A line like `use Acme\Core\Client;` has to become `use Acme\Vendor\Acme\Core\Client;` once the package is prefixed. Set `update_call_sites` and `prefix` rewrites those files in place:
 
 ```json
 {
@@ -18,9 +18,9 @@ Your plugin's own files refer to the packages too. A line like `use Acme\Core\Cl
 
 You can override the setting for one run with `--updateCallSites`, `--updateCallSites=false` or `--updateCallSites=src,includes`, on `prefix` and `diff`.
 
-## Do this first
+## Precautions
 
-This changes your source files. Commit before you run it, and look at the result first:
+This changes your source files. Make sure you commit or backup before you run it, and look at the result first:
 
 ```sh
 sh bin/strauss-rs.sh diff --updateCallSites
@@ -31,6 +31,8 @@ sh bin/strauss-rs.sh diff --updateCallSites
 ## It does not undo itself
 
 A rewrite stays in your files. If a name was renamed that should not have been (for example a function a package declares and PHP also provides), fixing the setting and running `prefix` again will not put the original name back, because the file no longer contains it. Use `git checkout` on those files, then fix the setting, then run `prefix` again.
+
+Additionally, changing any of the prefixes in your config will _not_ update those prefixes in your project files. You will have to do a search and replace for this.
 
 ## Names built at run time
 

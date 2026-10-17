@@ -1,10 +1,10 @@
 # Getting started
 
-This takes about five minutes. You need a Wordpress plugin or theme that uses Composer, with a `composer.json` and a `vendor/` folder.
+Strauss-RS is primarily designed for Wordpress themes and plugins, but can work on any Composer-based project which has a `composer.json` file and a `vendor` folder.
 
 ## 1. Install the script
 
-From your plugin or theme's root folder (the one with `composer.json`):
+From your project's root folder (the one with `composer.json`):
 
 ```sh
 mkdir -p bin
@@ -12,9 +12,9 @@ curl -fsSL -o bin/strauss-rs.sh https://raw.githubusercontent.com/evo-mark/strau
 sh bin/strauss-rs.sh
 ```
 
-The script downloads the right release for your operating system and CPU, checks its checksum, and keeps the program in `bin/` next to itself. It also keeps a `bin/.gitignore` up to date so the download is not committed. Commit `bin/strauss-rs.sh` and `bin/.gitignore`.
+The script downloads the right release for your operating system and CPU, verifies its checksum, and keeps the program in `bin/` next to the install script. It also keeps a `bin/.gitignore` up to date so the download is not committed. Commit `bin/strauss-rs.sh` and `bin/.gitignore`.
 
-## 2. Create a `strauss.json`
+## 2. Initialise
 
 ```sh
 sh bin/strauss-rs.sh init
@@ -39,9 +39,7 @@ The file looks like this:
 
 Everything in this file is optional. Every option is listed on the [configuration page](/reference/configuration).
 
-## 3. Run it from Composer
-
-Add this to your `composer.json` (`init` can do it for you):
+Init will also add necessary scripts to your `composer.json` file to ensure that everything is kept up to date for you.
 
 ```json
 {
@@ -73,27 +71,18 @@ Your own files still say `use GuzzleHttp\Client;`. Either change them by hand to
 }
 ```
 
-This rewrites your source files in place, so commit your work first and look at the changes with `sh bin/strauss-rs.sh diff` before you run it. The [page on updating your own code](./updating-your-code) has the details.
+This rewrites your source files in place, so commit your work first.
 
-## Checking what it did
+## 6. Delete the originals
 
-```sh
-sh bin/strauss-rs.sh diff
+Once you're happy that the prefixed output is working, you should delete the original vendor files to prevent both versions registering.
+
+```json
+{
+	"delete_vendor_packages": true
+}
 ```
 
-shows every change as a diff without writing anything. To find out why one name was or was not renamed:
-
-```sh
-sh bin/strauss-rs.sh explain 'GuzzleHttp\Client'
-```
-
-```
-class GuzzleHttp\Client
-  declared by  guzzlehttp/guzzle
-  in           guzzlehttp/guzzle/src/Client.php
-  autoloaded   yes
-  renamed to   Acme\Plugin\Vendor\GuzzleHttp\Client
-  because      it is autoloaded
-```
-
-If something goes wrong after prefixing, see [common problems](./common-problems).
+::: warning
+Be sure to test extensively at this point and make sure no code is relying on un-prefixed versions of your classes and symbols.
+:::

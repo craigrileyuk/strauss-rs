@@ -38,7 +38,7 @@ export default defineConfig({
 				],
 			},
 			{
-				text: "More",
+				text: "Other",
 				items: [{ text: "Benchmarks", link: "/benchmarks" }],
 			},
 		],
