@@ -1,0 +1,224 @@
+name: tag-release
+
+on:
+    push:
+        branches:
+            - main
+
+# Two pushes in quick succession would both try to create the next tag.
+concurrency:
+    group: tag-release
+    cancel-in-progress: false
+
+jobs:
+    tag:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  fetch-depth: "0"
+
+            - name: Bump version and push tag
+              id: tag
+              uses: anothrNick/github-tag-action@v1
+              env:
+                  WITH_V: true
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  DEFAULT_BUMP: none
+                  RELEASE_BRANCHES: main
+
+        outputs:
+            bump: ${{ steps.tag.outputs.part }}
+            new_tag: ${{ steps.tag.outputs.new_tag }}
+
+    # Nothing is released from a commit whose tests fail.
+    test:
+        runs-on: ubuntu-latest
+        needs: tag
+        if: needs.tag.outputs.bump != '' && needs.tag.outputs.bump != 'none'
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v6
+
+            - uses: dtolnay/rust-toolchain@stable
+
+            - uses: Swatinem/rust-cache@v2
+
+            - name: Test
+              run: cargo test --locked
+
+    build:
+        name: build (${{ matrix.target }})
+        runs-on: ${{ matrix.os }}
+        needs: [tag, test]
+        if: needs.tag.outputs.bump != '' && needs.tag.outputs.bump != 'none'
+        permissions:
+            contents: read
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # Linux. The musl builds are static, so run on any distribution.
+                    # `cross` builds these in a container with the right toolchain.
+                    - target: x86_64-unknown-linux-gnu
+                      os: ubuntu-latest
+                      cross: true
+                      smoke: true
+                    - target: x86_64-unknown-linux-musl
+                      os: ubuntu-latest
+                      cross: true
+                      smoke: true
+                    - target: aarch64-unknown-linux-gnu
+                      os: ubuntu-latest
+                      cross: true
+                    - target: aarch64-unknown-linux-musl
+                      os: ubuntu-latest
+                      cross: true
+
+                    # macOS. The runner is Apple Silicon and builds Intel from it.
+                    - target: aarch64-apple-darwin
+                      os: macos-latest
+                      smoke: true
+                    - target: x86_64-apple-darwin
+                      os: macos-latest
+
+                    # Windows. The ARM build is cross-compiled on the x86_64 runner.
+                    - target: x86_64-pc-windows-msvc
+                      os: windows-latest
+                      smoke: true
+                    - target: aarch64-pc-windows-msvc
+                      os: windows-latest
+        env:
+            TAG: ${{ needs.tag.outputs.new_tag }}
+            TARGET: ${{ matrix.target }}
+        defaults:
+            run:
+                shell: bash
+        steps:
+            - uses: actions/checkout@v6
+
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.target }}
+
+            - uses: Swatinem/rust-cache@v2
+              with:
+                  key: ${{ matrix.target }}
+
+            - name: Install cross
+              if: matrix.cross
+              uses: taiki-e/install-action@v2
+              with:
+                  tool: cross
+
+            # The binary reports the version in Cargo.toml, which isn't bumped when
+            # a tag is. Stamp the tag's version in, so `strauss-rs --version` matches
+            # the release. `cargo update --workspace` brings Cargo.lock in line with
+            # that one change and touches nothing else, so `--locked` still holds.
+            - name: Set the version from the tag
+              run: |
+                  VERSION="${TAG#v}"
+                  awk -v version="$VERSION" '!done && /^version = / { print "version = \"" version "\""; done = 1; next } { print }' Cargo.toml > Cargo.toml.new
+                  mv Cargo.toml.new Cargo.toml
+                  cargo update --workspace
+                  grep -m1 '^version = ' Cargo.toml
+
+            - name: Build
+              run: |
+                  if [ "${{ matrix.cross }}" = "true" ]; then
+                      cross build --release --locked --target "$TARGET"
+                  else
+                      cargo build --release --locked --target "$TARGET"
+                  fi
+
+            - name: Check the binary reports the release version
+              if: matrix.smoke
+              run: |
+                  BINARY="target/$TARGET/release/strauss-rs"
+                  if [ "$RUNNER_OS" = "Windows" ]; then BINARY="$BINARY.exe"; fi
+                  OUTPUT="$("$BINARY" --version)"
+                  echo "$OUTPUT"
+                  test "$OUTPUT" = "strauss-rs ${TAG#v}"
+
+            - name: Package
+              run: |
+                  NAME="strauss-rs-$TAG-$TARGET"
+                  mkdir -p "dist/$NAME"
+
+                  if [ "$RUNNER_OS" = "Windows" ]; then
+                      cp "target/$TARGET/release/strauss-rs.exe" "dist/$NAME/"
+                  else
+                      cp "target/$TARGET/release/strauss-rs" "dist/$NAME/"
+                  fi
+
+                  cp strauss.schema.json "dist/$NAME/"
+
+                  cd dist
+                  if [ "$RUNNER_OS" = "Windows" ]; then
+                      7z a -tzip "$NAME.zip" "$NAME" > /dev/null
+                      ARCHIVE="$NAME.zip"
+                  else
+                      tar -czf "$NAME.tar.gz" "$NAME"
+                      ARCHIVE="$NAME.tar.gz"
+                  fi
+                  rm -rf "$NAME"
+
+                  # `shasum` is on macOS; `sha256sum` on Linux and Windows.
+                  if command -v sha256sum > /dev/null; then
+                      sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+                  else
+                      shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+                  fi
+
+                  ls -l
+
+            - uses: actions/upload-artifact@v7
+              with:
+                  name: strauss-rs-${{ matrix.target }}
+                  path: dist/*
+                  if-no-files-found: error
+
+    release:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        needs: [tag, build]
+        if: needs.tag.outputs.bump != '' && needs.tag.outputs.bump != 'none'
+        steps:
+            - uses: actions/checkout@v6
+
+            - uses: actions/download-artifact@v8
+              with:
+                  pattern: strauss-rs-*
+                  path: dist
+                  merge-multiple: true
+
+            # One file to check every download against.
+            - name: Combine checksums
+              run: |
+                  cd dist
+                  cat *.sha256 > SHA256SUMS
+                  cat SHA256SUMS
+
+            # The schema is also useful on its own, for editors: `"$schema"` in a
+            # strauss.json can point at the release asset.
+            - name: Add the schema
+              run: cp strauss.schema.json dist/
+
+            - name: Create Github release
+              id: create_release
+              uses: softprops/action-gh-release@v3
+              with:
+                  tag_name: ${{ needs.tag.outputs.new_tag }}
+                  name: ${{ needs.tag.outputs.new_tag }}
+                  generate_release_notes: true
+                  fail_on_unmatched_files: true
+                  files: |
+                      dist/*.tar.gz
+                      dist/*.zip
+                      dist/*.sha256
+                      dist/SHA256SUMS
+                      dist/strauss.schema.json
